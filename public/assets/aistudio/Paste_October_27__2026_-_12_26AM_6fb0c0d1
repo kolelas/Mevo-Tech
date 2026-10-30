@@ -1,0 +1,1143 @@
+MASTER BUILD PROMPT: MEVO TECH — COMPLETE FULL-STACK E-COMMERCE PLATFORM
+
+1. YOUR ROLE AND MISSION
+
+Act as a senior full-stack software architect, experienced e-commerce engineer, UI/UX designer, database engineer, cybersecurity specialist, payment integration engineer and DevOps engineer.
+
+Build Mevo Tech, a fully functional, modern online technology store targeting customers in South Africa.
+
+This is a real business application, not a landing-page demo, static prototype, Figma design, or collection of disconnected components.
+
+Build the actual application inside the current project repository. Create the frontend, backend, database schema, APIs, authentication, product management, shopping cart, checkout, payment integrations, order management, administration dashboard, testing suite and deployment documentation.
+
+Do not stop after producing an architecture document. Start implementing the application, execute available commands, test it, fix errors and continue until the agreed scope is implemented or a specific external dependency prevents progress.
+
+Do not claim that something works unless you have implemented and tested it. Clearly distinguish completed features, sandbox-tested integrations, untested integrations and features requiring external credentials.
+
+2. BUSINESS REQUIREMENTS
+
+Business name: Mevo Tech
+
+Market: South Africa.
+
+Business model: Own inventory. Mevo Tech purchases, stores, manages and fulfils its own products. This is not a dropshipping marketplace.
+
+Currency: South African rand (ZAR).
+
+Primary language: English, using South African spelling and conventions.
+
+Timezone: Africa/Johannesburg.
+
+Primary audience: South African consumers, technology enthusiasts, students, professionals, home-office users and small businesses.
+
+Business objectives:
+
+- Sell computers, laptops, smartphones, gaming equipment, accessories, audio devices, networking equipment, smart-home devices, storage devices, wearables and other technology products.
+- Provide a premium, trustworthy shopping experience.
+- Support multiple payment methods through one checkout.
+- Maintain accurate stock, pricing, orders and payment records.
+- Give administrators control over the entire business.
+- Provide a foundation for future mobile applications, APIs, loyalty programmes and business expansion.
+
+Use ZAR consistently throughout the customer-facing experience. Store monetary values as integer cents, not floating-point numbers.
+
+3. REQUIRED TECHNOLOGY STACK
+
+Use a modern, maintainable, full-stack architecture.
+
+Preferred stack:
+
+- Next.js App Router.
+- React and TypeScript with strict type checking.
+- Tailwind CSS and an accessible component system.
+- PostgreSQL as the primary database.
+- Prisma ORM and version-controlled database migrations.
+- Zod for API input validation.
+- Secure, server-side authentication using a maintained authentication library.
+- Server-side payment integrations.
+- Automated tests using appropriate unit, integration and browser-testing tools.
+- Git-based source control.
+- Vercel or a suitable Node.js hosting platform.
+- A managed PostgreSQL service for production.
+
+Use stable, mutually compatible package versions available at implementation time. Consult current official documentation before choosing or integrating dependencies.
+
+If the repository already contains a partially implemented Mevo Tech application, inspect it first. Preserve sound existing work and improve it rather than unnecessarily rebuilding or deleting it.
+
+Keep the architecture modular, with separate responsibilities for the storefront, business logic, database access, authentication, payments, stock management, administration and notifications.
+
+Use background jobs or a reliable queue where necessary for email delivery, payment reconciliation and other asynchronous tasks.
+
+4. BRAND IDENTITY AND DESIGN
+
+Create a premium, clean, modern technology brand.
+
+Brand name: Mevo Tech.
+
+Visual direction:
+
+- Minimalist, refined and contemporary.
+- White or soft-neutral backgrounds.
+- Charcoal typography.
+- A restrained electric-blue accent.
+- Generous whitespace.
+- High-quality product photography.
+- Clear visual hierarchy.
+- Carefully designed product cards.
+- Subtle transitions and hover states.
+- Professional layouts inspired by premium consumer electronics retailers.
+- Excellent mobile, tablet and desktop responsiveness.
+
+Typography should be modern and legible. Use a consistent spacing scale, border radius system, shadow system and design tokens.
+
+Create a consistent brand mark and wordmark using original design elements. Do not copy another company's logo, proprietary branding or website layout.
+
+The interface must feel like a genuine technology retailer, not a generic admin template.
+
+Include:
+
+- Loading skeletons.
+- Empty states.
+- Helpful error messages.
+- Success notifications.
+- Form validation feedback.
+- Accessible focus states.
+- Keyboard navigation.
+- Proper colour contrast.
+- Mobile-friendly navigation.
+- Responsive product galleries.
+- Responsive cart and checkout.
+- Clear order-status indicators.
+
+Avoid unnecessary animation, cluttered dashboards, oversized decorative elements and components that interfere with shopping.
+
+5. STOREFRONT AND PUBLIC PAGES
+
+Implement the following pages as working routes.
+
+Homepage
+
+Include:
+
+- Premium brand header.
+- Main navigation.
+- Product search.
+- Account and cart links.
+- Hero section with a clear shopping call to action.
+- Featured products.
+- New arrivals.
+- Best sellers, when actual sales data exists.
+- Product categories.
+- Promotional banners managed by administrators.
+- Special offers with accurate dates and prices.
+- Trust and service information.
+- Delivery information.
+- Payment-method information.
+- Customer support information.
+- Newsletter signup with appropriate consent.
+- Complete footer.
+
+Do not invent customer testimonials, ratings, sales figures or popularity statistics. Use clearly labelled demo content in development and real data once available.
+
+Product catalogue
+
+Provide:
+
+- Category and subcategory navigation.
+- Search by product name, SKU, brand and relevant attributes.
+- Filtering by price, brand, category, availability and supported specifications.
+- Sorting by relevance, price, newest and popularity when supported by actual data.
+- Pagination or efficient incremental loading.
+- Product comparison where practical.
+- Product badges such as New, Sale and Out of Stock, based on real product data.
+- Shareable search and filter URLs.
+- Clear results and empty states.
+
+Product detail pages
+
+Each product must support:
+
+- Product name and SKU.
+- Brand and category.
+- Product description.
+- Specifications and attributes.
+- Multiple product images.
+- Price and promotional price where applicable.
+- Accurate stock availability.
+- Quantity selection.
+- Add to cart.
+- Delivery estimate where supported.
+- Warranty information.
+- Returns information.
+- Related products.
+- Recently viewed products, subject to appropriate privacy practices.
+- Product variants such as storage capacity, colour or configuration.
+- SEO metadata and structured product data.
+
+Never invent technical specifications for actual products. Administrators must be able to enter verified specifications.
+
+Additional public pages
+
+Build:
+
+- About Mevo Tech.
+- Contact.
+- Frequently asked questions.
+- Shipping and delivery.
+- Returns, refunds and exchanges.
+- Warranty policy.
+- Privacy notice.
+- Terms and conditions.
+- Payment information.
+- Order tracking.
+- Cookie and privacy preferences where required.
+- Accessibility information.
+- Account pages.
+- Custom 404 and error pages.
+
+Legal pages must be configurable and clearly identified as drafts until reviewed and approved by the business owner.
+
+6. PRODUCT AND INVENTORY MANAGEMENT
+
+Mevo Tech owns its stock. The database must be the authoritative source of inventory.
+
+Build an inventory system that supports:
+
+- Product creation.
+- Product editing.
+- Product activation and deactivation.
+- Categories and subcategories.
+- Brands.
+- SKU management.
+- Barcode field where needed.
+- Product variants.
+- Product images.
+- Product descriptions and specifications.
+- Cost price.
+- Selling price.
+- Promotional price.
+- Tax configuration.
+- Quantity on hand.
+- Reserved quantity.
+- Available quantity.
+- Low-stock thresholds.
+- Supplier records.
+- Stock receipts.
+- Stock adjustments.
+- Stock movement history.
+- Damaged and returned stock.
+- Stocktake reconciliation.
+- Inventory valuation reports.
+- Low-stock alerts.
+- Bulk CSV import and export.
+
+Use database transactions and appropriate concurrency controls for stock changes.
+
+Available stock must be calculated from on-hand stock minus valid reservations, adjusted for the inventory model chosen.
+
+Never rely on a quantity sent by the browser to determine how much stock exists.
+
+Create an auditable stock movement record for every inventory change, including the administrator or system process responsible, reason, timestamp and related order where applicable.
+
+Prevent overselling during concurrent checkouts.
+
+Implement temporary stock reservations with expiry and a safe release process. Do not permanently decrement stock simply because someone opens the checkout page.
+
+7. DATABASE DESIGN
+
+Design a normalised PostgreSQL database with migrations.
+
+Include appropriate models for:
+
+- Users.
+- Roles and permissions.
+- Customer profiles.
+- Customer addresses.
+- Products.
+- Product variants.
+- Product images.
+- Categories.
+- Brands.
+- Product attributes.
+- Suppliers.
+- Inventory locations if required.
+- Inventory balances.
+- Stock movements.
+- Stock reservations.
+- Carts and cart items where persistence is needed.
+- Orders.
+- Order items.
+- Order status history.
+- Payment attempts.
+- Payment provider transactions.
+- Payment webhook events.
+- Refunds.
+- Shipping methods.
+- Shipments.
+- Shipment tracking events.
+- Discount codes.
+- Promotions.
+- Tax configuration.
+- Wishlists.
+- Product reviews.
+- Support requests.
+- Newsletter subscriptions.
+- Audit logs.
+- Store settings.
+- Notification records.
+
+Use proper foreign keys, unique constraints, indexes and transaction boundaries.
+
+Store order-item snapshots of product name, SKU, price, quantity and applicable tax so historical orders remain accurate even when catalogue information changes.
+
+Store money as integer cents and use explicit currency fields.
+
+Use explicit order and payment status enums or constrained status values. Avoid relying on arbitrary, inconsistent strings.
+
+Create database migrations and a development seed script containing clearly identified hypothetical products.
+
+Never seed fake customer data, demo orders or fake sales metrics into production by default.
+
+8. USER ACCOUNTS AND AUTHENTICATION
+
+Implement secure customer authentication.
+
+Include:
+
+- Registration.
+- Login and logout.
+- Email verification.
+- Password reset.
+- Secure session management.
+- Account profile.
+- Address book.
+- Order history.
+- Order detail pages.
+- Saved wishlist.
+- Account security settings.
+- Guest checkout.
+- Guest order lookup using a secure, expiring or otherwise protected mechanism.
+
+Use a maintained authentication library and established security practices.
+
+Hash passwords using an appropriate password-hashing algorithm if password credentials are managed locally.
+
+Use secure cookies, CSRF protections where applicable, rate limiting and appropriate session expiration.
+
+Do not store passwords in plaintext or expose authentication tokens in URLs unnecessarily.
+
+Do not expose customer addresses, order information or personal information to unauthorised users.
+
+9. CART AND CHECKOUT
+
+Implement a complete shopping cart.
+
+Features:
+
+- Add and remove products.
+- Change quantities.
+- Support product variants.
+- Persist carts appropriately.
+- Merge guest carts with customer carts after login where practical.
+- Validate product availability.
+- Recalculate prices from the server.
+- Validate discounts on the server.
+- Display subtotal, shipping, applicable tax, discount and final total.
+- Show the selected payment method.
+- Collect customer and delivery details.
+- Allow guest checkout.
+- Provide a final order summary.
+- Display terms and relevant notices.
+- Handle expired stock reservations.
+- Handle payment cancellation, pending payments and payment failures.
+
+The server must calculate every order total using current database prices and validated quantities.
+
+Never trust the browser to supply authoritative product prices, discounts, shipping fees, tax amounts or payment totals.
+
+Prevent duplicate order creation and duplicate payment processing.
+
+Create an order reference that is unique and difficult to guess.
+
+The checkout must be usable on mobile devices and minimise unnecessary steps.
+
+10. PAYMENT GATEWAY ARCHITECTURE
+
+Implement a provider-independent payment service layer.
+
+Create a common payment-provider interface with methods for:
+
+- Checking provider configuration.
+- Initiating a payment.
+- Redirecting to hosted checkout where supported.
+- Verifying a transaction.
+- Processing signed webhooks.
+- Querying transaction status.
+- Processing refunds where supported.
+- Normalising provider-specific statuses.
+- Handling cancellation and failure.
+- Recording provider references and audit events.
+
+Keep each provider implementation in a separate module.
+
+Suggested modules:
+
+- payments/payfast
+- payments/payflex
+- payments/ozow
+- payments/paystack
+- payments/crypto
+
+The checkout should display only payment methods that are enabled, configured and available for the current order.
+
+Each provider must be integrated against its current official API documentation. Do not fabricate endpoints, authentication methods, signature algorithms, field names or refund capabilities.
+
+Use sandbox/test credentials whenever the provider offers them.
+
+If an account or credential is missing, implement the adapter and configuration validation, clearly label the provider as not configured, and explain what is needed. Do not fake a successful payment.
+
+10.1 PayFast
+
+Integrate PayFast for South African online payments.
+
+Requirements:
+
+- Use the current official PayFast integration documentation.
+- Support the payment flow and methods available to the merchant account.
+- Implement server-side payment initiation.
+- Generate the required signature using the official specification.
+- Validate the payment notification and all applicable signature, source, amount, merchant and reference checks.
+- Verify notifications with PayFast's official validation process where required.
+- Support ITN/webhook processing.
+- Verify the transaction independently when required.
+- Handle successful, failed, cancelled and pending payments.
+- Support refunds only through the actual documented API or approved merchant workflow.
+- Store provider transaction IDs and audit events.
+- Support sandbox testing.
+
+Do not treat a browser redirect or success-page visit as proof of payment.
+
+10.2 Payflex
+
+Integrate Payflex as a buy-now-pay-later payment option where the merchant and customer are eligible.
+
+Requirements:
+
+- Consult the current official Payflex merchant and developer documentation.
+- Confirm eligibility, available product types, supported currencies and settlement rules.
+- Implement the actual supported checkout or hosted-payment flow.
+- Handle approval, rejection, cancellation and pending states.
+- Verify payment status through documented server-side mechanisms.
+- Process signed callbacks or webhooks where supported.
+- Prevent orders from being fulfilled before the required confirmation.
+- Handle refunds and cancellations according to actual provider capabilities.
+- Clearly display the terms supplied or approved by Payflex.
+
+Do not promise that every customer will qualify for instalments.
+
+Do not invent Payflex endpoints or assume that an API is available to every merchant. If direct integration requires merchant approval or a partner integration, document that dependency and complete the adapter only to the extent supported by official documentation.
+
+10.3 Ozow
+
+Integrate Ozow for supported instant EFT payments.
+
+Requirements:
+
+- Use current official Ozow developer documentation.
+- Implement the documented payment request and signing process.
+- Verify callbacks and transaction status.
+- Validate transaction amount, currency, merchant identity and order reference.
+- Handle pending, successful, cancelled, failed and expired transactions.
+- Process notifications idempotently.
+- Support the documented sandbox or testing procedure.
+- Store provider transaction identifiers.
+- Support refunds only where officially supported.
+
+Never mark an order as paid solely because a customer returned to the success URL.
+
+10.4 Paystack
+
+Include Paystack as an additional payment provider, provided the merchant account supports the intended South African business and currency.
+
+Requirements:
+
+- Use the official current API.
+- Implement hosted checkout.
+- Keep secret keys server-side.
+- Verify transaction status and the expected amount and currency.
+- Verify signed webhooks.
+- Handle pending, failed and successful transactions.
+- Prevent duplicate payment processing.
+- Support test keys and sandbox testing where available.
+- Document merchant eligibility and supported payment methods.
+
+10.5 Cryptocurrency payments
+
+Implement a separate cryptocurrency payment adapter using a reputable payment processor or merchant service that officially supports the merchant's jurisdiction and intended transaction type.
+
+Evaluate suitable providers using their current documentation, merchant eligibility and supported assets. Potential providers to investigate include Coinbase Commerce or another currently available merchant processor; do not assume any provider is available to a South African merchant without verifying this.
+
+Support only assets and networks explicitly enabled by the configured provider.
+
+Requirements:
+
+- Allow the customer to select cryptocurrency at checkout.
+- Show the supported asset and network.
+- Obtain the payment amount and payment instructions from the verified provider API.
+- Display the exact amount, asset, network and payment expiry.
+- Show the payment status clearly.
+- Support pending confirmations and expired payment requests.
+- Validate webhook signatures.
+- Verify payment amount, asset, network and order reference.
+- Handle underpayments, overpayments and duplicate notifications.
+- Record the provider transaction ID and blockchain transaction hash where available.
+- Use idempotent webhook processing.
+- Confirm the payment according to the provider's documented confirmation policy.
+- Handle refunds according to provider capabilities and the published refund policy.
+- Explain exchange-rate volatility, network fees, confirmation times and refund limitations before payment.
+
+Do not ask the customer to provide a private key or seed phrase.
+
+Do not store cryptocurrency private keys or seed phrases.
+
+Do not build an unreviewed wallet-custody system.
+
+Do not treat a customer-submitted transaction hash or screenshot as proof of payment.
+
+Do not automatically convert cryptocurrency into ZAR unless the configured provider explicitly supports that feature and the business has enabled it.
+
+If direct wallet payments are implemented as a future extension, keep them disabled until transaction monitoring, confirmation policy, reconciliation and security review are complete.
+
+Review applicable South African legal, tax and regulatory requirements before enabling cryptocurrency payments commercially.
+
+10.6 Payment selection experience
+
+Create a professional payment-selection interface.
+
+Possible options, when configured:
+
+- PayFast.
+- Payflex.
+- Ozow.
+- Paystack.
+- Cryptocurrency.
+
+Show a provider's logo only when its use is permitted and the asset is legitimate.
+
+Clearly indicate supported payment methods and any instalment or eligibility conditions.
+
+If a provider is disabled or unconfigured, do not show it as a working payment option.
+
+Never expose secret keys or merchant credentials to the browser.
+
+11. PAYMENT SECURITY AND ORDER STATE MANAGEMENT
+
+This section is mandatory.
+
+Create an explicit order lifecycle, for example:
+
+PENDING_PAYMENT → PAID → PROCESSING → SHIPPED → DELIVERED
+
+Also support appropriate states for:
+
+- PAYMENT_FAILED.
+- PAYMENT_CANCELLED.
+- PAYMENT_EXPIRED.
+- REFUND_PENDING.
+- PARTIALLY_REFUNDED.
+- REFUNDED.
+- FULFILMENT_ON_HOLD.
+- CANCELLED.
+
+Use a separate payment-attempt status model so multiple payment attempts can be recorded without corrupting the order's history.
+
+Requirements:
+
+- Verify webhook signatures before processing events.
+- Persist incoming event identifiers and enforce idempotency.
+- Validate merchant identity and transaction reference.
+- Compare the paid amount and currency with the expected order values.
+- Independently verify payments when required by the provider.
+- Use database transactions for critical state changes.
+- Prevent duplicate inventory deductions.
+- Prevent duplicate refunds.
+- Handle out-of-order and repeated events.
+- Reject unexpected status transitions.
+- Record state changes and failure reasons.
+- Never fulfil an order based only on a client-side redirect.
+- Reconcile orders against provider transaction status.
+- Provide an administrative mechanism to investigate unresolved transactions.
+
+Do not mark a payment successful just because an API returned HTTP 200. Validate the provider's actual response status and transaction details.
+
+Do not automatically mark an order paid if a payment notification is malformed or cannot be verified.
+
+Create tests for duplicate notifications, invalid signatures, wrong amounts, wrong currencies, cancelled payments, repeated attempts and concurrent inventory updates.
+
+12. SHIPPING AND ORDER FULFILMENT
+
+Build a shipping and fulfilment module for South Africa.
+
+Include:
+
+- Shipping method configuration.
+- Shipping zones.
+- Delivery rates.
+- Free-shipping thresholds where configured.
+- Delivery address validation.
+- Estimated delivery windows.
+- Order packing status.
+- Shipment records.
+- Courier name.
+- Tracking number.
+- Tracking URL.
+- Dispatch date.
+- Delivery status.
+- Customer shipping notifications.
+- Failed-delivery and returned-to-sender handling.
+
+Design the shipping service so a courier integration can be added later without rewriting checkout.
+
+Do not invent courier prices, guaranteed delivery dates or live tracking data.
+
+Allow administrators to enter tracking information manually if no courier API is configured.
+
+Shipping prices must be calculated on the server and included in the payment amount.
+
+13. ADMINISTRATION DASHBOARD
+
+Build a secure, professional admin dashboard.
+
+Required areas:
+
+Overview
+
+- Paid sales totals.
+- Order counts.
+- Average order value.
+- Revenue trends.
+- Best-selling products based on actual order data.
+- Low-stock alerts.
+- Pending payments.
+- Unfulfilled orders.
+- Refund requests.
+- Recent order activity.
+
+Clearly define whether reports include tax, refunds, shipping and pending orders. Do not present pending payments as confirmed sales.
+
+Product management
+
+- Create products.
+- Edit products.
+- Upload and manage images.
+- Edit categories and specifications.
+- Manage variants.
+- Set prices and discounts.
+- Manage stock.
+- Import and export products.
+- Activate or deactivate products.
+- Preview product pages.
+
+Orders
+
+- Search and filter orders.
+- View customer and order information according to permissions.
+- View payment attempts.
+- View transaction references.
+- Update fulfilment status.
+- Add shipment and tracking information.
+- Issue refunds through supported provider workflows.
+- Record manual administrative decisions.
+- View order-status history.
+
+Inventory
+
+- Stock adjustments.
+- Stock receipts.
+- Stocktakes.
+- Low-stock thresholds.
+- Inventory movement history.
+- Reservation monitoring.
+- Supplier management.
+
+Payments
+
+- Configure enabled providers.
+- Show provider connection status.
+- Keep credentials in protected server-side environment configuration or a secure secret manager.
+- Show transaction statuses.
+- View failed webhook events.
+- Reconcile unresolved payments.
+- Record refunds.
+- Export reports.
+
+Never display full secret keys in the dashboard.
+
+Marketing and content
+
+- Manage homepage banners.
+- Manage featured products.
+- Configure discount codes.
+- Configure promotions.
+- Edit static page content.
+- Manage newsletter subscribers with appropriate consent.
+- Configure basic SEO fields.
+
+Settings
+
+- Business details.
+- Contact information.
+- Currency.
+- Timezone.
+- Shipping settings.
+- Tax settings.
+- Notification settings.
+- Payment provider configuration status.
+- Store maintenance mode.
+
+14. ROLE-BASED ACCESS CONTROL
+
+Implement distinct roles, at minimum:
+
+- Owner.
+- Administrator.
+- Inventory manager.
+- Order fulfilment manager.
+- Customer support agent.
+
+Enforce permissions on the server for every protected operation.
+
+Do not rely on hiding buttons in the frontend as an access-control mechanism.
+
+Protect sensitive actions such as refunds, payment settings, account management and inventory adjustments.
+
+Use audit logging for important administrative actions.
+
+Create an initial owner-account setup process that does not rely on a publicly accessible default password.
+
+Never ship hardcoded production credentials or a universal administrator account.
+
+15. EMAIL AND CUSTOMER COMMUNICATION
+
+Integrate a configurable transactional email provider.
+
+Create templates for:
+
+- Email verification.
+- Password reset.
+- Order received.
+- Payment confirmed.
+- Payment pending.
+- Payment failure.
+- Order processing.
+- Shipment dispatched.
+- Tracking information.
+- Delivery confirmation where supported.
+- Refund initiated.
+- Refund completed.
+- Stock and order-related administrative alerts.
+
+Use a queue or reliable retry mechanism for email delivery.
+
+Do not falsely promise that an email has been sent when the email provider is not configured.
+
+Provide a development email preview or sandbox mode.
+
+16. SEARCH ENGINE OPTIMISATION AND PERFORMANCE
+
+Implement:
+
+- Unique page titles and descriptions.
+- Canonical URLs.
+- XML sitemap.
+- Robots.txt.
+- Product structured data.
+- Breadcrumb structured data where appropriate.
+- Social-sharing metadata.
+- Optimised product images.
+- Lazy loading where appropriate.
+- Server-rendered product content.
+- Efficient database queries.
+- Pagination.
+- Caching with correct invalidation.
+- Sensible image dimensions.
+- Accessible semantic HTML.
+
+Do not expose customer information, private order pages or admin routes through public search indexing.
+
+Avoid displaying stale prices or inventory after a product is updated.
+
+17. SECURITY REQUIREMENTS
+
+Use secure development practices throughout the application.
+
+Requirements:
+
+- Validate all incoming data on the server.
+- Enforce authentication and authorisation.
+- Apply rate limits to login, password reset, checkout and sensitive endpoints.
+- Prevent SQL injection through safe database access.
+- Prevent cross-site scripting.
+- Protect against CSRF where relevant.
+- Configure secure cookies.
+- Set appropriate security headers.
+- Validate uploaded file type, size and content.
+- Restrict file uploads to authorised administrators.
+- Store secrets in environment variables or a secret manager.
+- Never commit real credentials.
+- Never expose private keys or payment secrets through public frontend environment variables.
+- Avoid logging passwords, tokens, full payment data or unnecessary personal information.
+- Add request IDs and structured logs.
+- Keep dependencies maintained.
+- Run dependency and security checks.
+- Protect sensitive exports and downloads.
+- Use least-privilege database credentials.
+- Configure database backups and test restoration.
+- Implement a secure error-handling strategy.
+- Document incident response and credential rotation.
+
+Never store payment card details directly. Use provider-hosted checkout or an appropriately certified provider-controlled payment component.
+
+Do not claim PCI DSS compliance unless the business's actual payment architecture and compliance obligations have been assessed.
+
+18. SOUTH AFRICAN BUSINESS REQUIREMENTS
+
+Design the application for South African commerce.
+
+Account for the need to review:
+
+- POPIA and lawful personal-information processing.
+- Consumer Protection Act requirements.
+- Electronic Communications and Transactions Act requirements.
+- Applicable tax and VAT rules.
+- Consumer cancellation, returns, warranties and refunds.
+- Business identification and contact disclosures.
+- Electronic recordkeeping.
+- Direct-marketing consent and unsubscribe handling.
+- Cryptocurrency-related requirements where applicable.
+- Payment provider merchant eligibility and settlement rules.
+
+Support configurable tax treatment rather than hardcoding assumptions about every product or business.
+
+Make tax-inclusive pricing and invoice presentation configurable according to the business's actual obligations.
+
+Create draft legal pages and an implementation checklist, but do not represent generated text as legal advice or guaranteed compliance.
+
+19. ANALYTICS AND REPORTING
+
+Create a reporting foundation for:
+
+- Orders by status.
+- Confirmed sales.
+- Refund totals.
+- Product sales.
+- Inventory levels.
+- Payment-provider performance.
+- Checkout completion.
+- Failed payments.
+- Shipping performance.
+- Discounts and promotions.
+
+Use actual database records.
+
+Do not fabricate analytics or report sample data as genuine business results.
+
+Make third-party analytics optional and implement appropriate privacy and consent controls.
+
+20. ENVIRONMENT CONFIGURATION
+
+Create a complete ".env.example" with descriptive placeholders.
+
+Include variables appropriate to the selected implementation, such as:
+
+DATABASE_URL=
+DIRECT_URL=
+
+NEXT_PUBLIC_SITE_URL=
+
+AUTH_SECRET=
+AUTH_URL=
+
+PAYFAST_MERCHANT_ID=
+PAYFAST_MERCHANT_KEY=
+PAYFAST_PASSPHRASE=
+PAYFAST_SANDBOX=true
+
+PAYFLEX_CLIENT_ID=
+PAYFLEX_CLIENT_SECRET=
+PAYFLEX_ENVIRONMENT=sandbox
+
+OZOW_SITE_CODE=
+OZOW_PRIVATE_KEY=
+OZOW_API_KEY=
+OZOW_ENVIRONMENT=sandbox
+
+PAYSTACK_PUBLIC_KEY=
+PAYSTACK_SECRET_KEY=
+PAYSTACK_CURRENCY=ZAR
+
+CRYPTO_PROVIDER=
+CRYPTO_API_KEY=
+CRYPTO_WEBHOOK_SECRET=
+
+EMAIL_PROVIDER=
+EMAIL_API_KEY=
+EMAIL_FROM=
+
+STORAGE_PROVIDER=
+STORAGE_BUCKET=
+STORAGE_ACCESS_KEY=
+STORAGE_SECRET_KEY=
+
+ADMIN_INITIAL_SETUP_TOKEN=
+LOG_LEVEL=info
+
+These are illustrative variable names, not a claim that every provider uses these exact credentials or supports the same authentication mechanism.
+
+Inspect each provider's current official documentation and adapt its actual configuration requirements.
+
+Remove unused variables rather than leaving misleading configuration in the final project.
+
+Use a server-side configuration validator that identifies missing settings without printing secret values.
+
+Keep production and sandbox credentials separate.
+
+Use test credentials only until the business owner deliberately approves a production switch.
+
+21. AUTOMATED TESTING
+
+Write automated tests as part of the implementation.
+
+Unit tests
+
+Test:
+
+- Money calculations.
+- Discounts.
+- Tax calculations.
+- Shipping calculations.
+- Product availability.
+- Stock reservation logic.
+- Order status transitions.
+- Payment status normalisation.
+- Webhook signature verification.
+- Idempotency.
+- Refund calculations.
+
+Integration tests
+
+Test:
+
+- Product API.
+- Authentication and permissions.
+- Cart validation.
+- Checkout order creation.
+- Payment initiation using mocked or sandbox provider responses.
+- Invalid webhook rejection.
+- Valid webhook processing.
+- Duplicate webhook handling.
+- Inventory reservation and release.
+- Payment amount mismatch.
+- Currency mismatch.
+- Failed and cancelled payments.
+- Order fulfilment.
+- Refund processing.
+- Admin permissions.
+
+End-to-end tests
+
+Test the complete customer journey:
+
+1. Open the storefront.
+2. Search for a product.
+3. Open a product page.
+4. Add an available item to the cart.
+5. Change quantity.
+6. Enter checkout details.
+7. Select an enabled test payment method.
+8. Complete a sandbox payment where available.
+9. Verify the resulting order and payment state.
+10. Confirm inventory handling.
+11. Sign in as an authorised administrator.
+12. Locate the order and review its status.
+
+Also test mobile layouts, empty states, unavailable stock, payment failure and checkout cancellation.
+
+Never use live payment credentials in automated tests.
+
+22. DEPLOYMENT
+
+Create a complete deployment guide.
+
+Prefer a managed PostgreSQL service and a production-capable Next.js hosting platform.
+
+Document:
+
+- Prerequisites.
+- Local installation.
+- Environment configuration.
+- Database creation.
+- Database migrations.
+- Seed data.
+- Local development.
+- Unit and integration tests.
+- Production build.
+- Deployment.
+- Domain configuration.
+- HTTPS.
+- Payment-provider sandbox configuration.
+- Webhook configuration.
+- Email configuration.
+- Object storage configuration.
+- Database backups.
+- Monitoring.
+- Error tracking.
+- Production credential rotation.
+- Rollback procedures.
+- Launch verification.
+
+Provide exact commands that match the final package scripts and selected hosting environment.
+
+Never claim a domain, database, payment account or deployment has been created unless it actually has been.
+
+Clearly distinguish the code that is complete from the external account setup the business owner must perform.
+
+23. IMPLEMENTATION WORKFLOW
+
+Work in the following order.
+
+Phase 1 — Inspect and architect
+
+- Inspect the repository.
+- Identify existing code and dependencies.
+- Define the final architecture.
+- Create or update the project plan.
+- Identify critical security and payment dependencies.
+
+Phase 2 — Foundation
+
+- Configure TypeScript and project scripts.
+- Set up Prisma and PostgreSQL.
+- Create database models and migrations.
+- Add seed data.
+- Add server-side validation.
+- Establish logging and error handling.
+
+Phase 3 — Storefront
+
+- Implement the brand system.
+- Build the homepage.
+- Build catalogue, search and filters.
+- Build product detail pages.
+- Build responsive navigation and footer.
+- Add public information pages.
+
+Phase 4 — Customer shopping
+
+- Implement cart management.
+- Implement checkout.
+- Add guest checkout and customer accounts.
+- Validate prices and stock server-side.
+- Implement inventory reservations.
+- Create order and payment-attempt records.
+
+Phase 5 — Payments
+
+- Create the shared payment interface.
+- Implement PayFast.
+- Implement Payflex according to verified integration access.
+- Implement Ozow.
+- Implement Paystack.
+- Implement the selected cryptocurrency provider.
+- Implement provider-specific webhook verification.
+- Add idempotency, transaction validation and reconciliation.
+- Test all available sandbox flows.
+
+Phase 6 — Administration
+
+- Implement secure authentication and roles.
+- Build product and category management.
+- Build inventory management.
+- Build order management.
+- Build payment monitoring and refunds.
+- Build shipping and fulfilment.
+- Build reporting and settings.
+
+Phase 7 — Operational features
+
+- Add email notifications.
+- Add tracking workflows.
+- Add SEO.
+- Add monitoring.
+- Add data exports.
+- Add legal and privacy configuration.
+- Add operational safeguards.
+
+Phase 8 — Verification
+
+- Run migrations.
+- Seed development data.
+- Run linting and type checking.
+- Run unit tests.
+- Run integration tests.
+- Run the production build.
+- Run available end-to-end tests.
+- Fix errors rather than suppressing them.
+- Review security-sensitive code.
+- Document any remaining external blockers.
+
+Phase 9 — Delivery
+
+Provide:
+
+- The complete source code.
+- A concise architecture overview.
+- A directory map.
+- Database schema and migration instructions.
+- ".env.example".
+- Installation instructions.
+- Sandbox payment setup.
+- Webhook setup.
+- Deployment instructions.
+- Testing results.
+- Security and production-readiness checklist.
+- External account requirements.
+- A list of any unfinished integrations and why they remain unfinished.
+
+24. NON-NEGOTIABLE RULES
+
+1. Do not deliver a static mockup in place of the application.
+2. Do not create fake payment-success flows that can mark orders as paid.
+3. Do not invent payment APIs, credentials, merchant permissions or gateway capabilities.
+4. Do not expose secrets to the browser.
+5. Do not trust browser-submitted prices or stock quantities.
+6. Do not fulfil orders until the required payment confirmation is verified.
+7. Do not oversell inventory through concurrent checkout requests.
+8. Do not invent live sales data, testimonials, product specifications or delivery promises.
+9. Do not silently omit requested features.
+10. Do not replace real functionality with TODO comments without documenting the limitation.
+11. Do not claim tests passed unless they were executed and passed.
+12. Do not claim the site is production-ready until its security, payment, operational and legal launch requirements have been reviewed.
+13. Prefer complete, maintainable implementations over unnecessary complexity.
+14. If credentials or merchant approval are unavailable, finish all independently implementable code and clearly document the exact next steps.
+15. Ask questions only when a missing decision genuinely blocks implementation. Otherwise use sensible, documented defaults.
+
+25. FIRST RESPONSE AND IMMEDIATE ACTION
+
+Start by inspecting the current repository and its existing files.
+
+Then:
+
+1. Summarise the existing state of the project.
+2. Present the proposed final architecture and directory structure.
+3. Identify the payment providers whose official documentation and merchant requirements must be checked.
+4. Create a short implementation checklist.
+5. Immediately begin implementing the first working vertical slice: database-backed product catalogue, product detail pages, cart, server-validated checkout, order creation and the initial secure payment-provider interface.
+
+Continue into the other phases rather than stopping at the plan.
+
+At the end of each major phase, report what was implemented, what commands were run, what tests passed or failed, and what remains.
+
+The final objective is a coherent, fully functional Mevo Tech e-commerce application that can be run locally, tested using sandbox payment systems and prepared for real commercial deployment once the owner completes the required external account setup, legal review and production verification.
+
+BEGIN BY INSPECTING THE REPOSITORY AND IMPLEMENTING THE APPLICATION.

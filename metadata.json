@@ -1,0 +1,6 @@
+{
+  "name": "Mevo Tech — South Africa's Premier Online Tech Store",
+  "description": "Mevo Tech is South Africa's premier technology retailer, delivering genuine laptops, PCs, smartphones, gaming gear, smart-home and audio devices with fast delivery, secure payments in ZAR, and verified local warranties.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
