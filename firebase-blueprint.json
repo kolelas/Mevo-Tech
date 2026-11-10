@@ -1,0 +1,139 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "Hardware catalogue item available at Sandton depot",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 256 },
+        "sku": { "type": "string", "maxLength": 64 },
+        "category": { "type": "string", "maxLength": 128 },
+        "priceCents": { "type": "number" },
+        "regularPriceCents": { "type": "number" },
+        "costPriceCents": { "type": "number" },
+        "onHand": { "type": "number" },
+        "reserved": { "type": "number" },
+        "brand": { "type": "string", "maxLength": 128 },
+        "tagline": { "type": "string", "maxLength": 256 },
+        "featured": { "type": "boolean" },
+        "placementSlot": { "type": "string", "maxLength": 64 },
+        "placementPriority": { "type": "number" },
+        "isPinnedToTop": { "type": "boolean" }
+      },
+      "required": ["id", "name", "sku", "category", "priceCents", "onHand"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Customer purchase transaction record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "reference": { "type": "string", "maxLength": 64 },
+        "customerId": { "type": "string", "maxLength": 128 },
+        "customerEmail": { "type": "string", "maxLength": 256 },
+        "customerName": { "type": "string", "maxLength": 256 },
+        "customerPhone": { "type": "string", "maxLength": 64 },
+        "status": { "type": "string", "maxLength": 64 },
+        "subtotalCents": { "type": "number" },
+        "discountCents": { "type": "number" },
+        "shippingCents": { "type": "number" },
+        "taxCents": { "type": "number" },
+        "totalCents": { "type": "number" },
+        "currency": { "type": "string", "maxLength": 16 },
+        "paymentMethod": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "reference", "customerEmail", "status", "subtotalCents", "totalCents"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "Registered customer profile and identity record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 256 },
+        "name": { "type": "string", "maxLength": 256 },
+        "phone": { "type": "string", "maxLength": 64 },
+        "emailVerified": { "type": "boolean" },
+        "status": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "email", "name"]
+    },
+    "Coupon": {
+      "title": "Coupon",
+      "description": "Discount promotion coupon",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "maxLength": 64 },
+        "type": { "type": "string", "enum": ["PERCENTAGE", "FIXED_CENTS"] },
+        "value": { "type": "number" },
+        "minOrderCents": { "type": "number" },
+        "description": { "type": "string", "maxLength": 256 },
+        "isActive": { "type": "boolean" },
+        "usageCount": { "type": "number" }
+      },
+      "required": ["code", "type", "value", "minOrderCents"]
+    },
+    "PriceAlert": {
+      "title": "PriceAlert",
+      "description": "Price drop alert request",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "productId": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 256 },
+        "targetPriceCents": { "type": "number" },
+        "targetType": { "type": "string", "maxLength": 64 },
+        "initialPriceCents": { "type": "number" },
+        "isTriggered": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "productId", "email", "targetPriceCents"]
+    },
+    "StoreSettings": {
+      "title": "StoreSettings",
+      "description": "Administrative store configuration parameters",
+      "type": "object",
+      "properties": {
+        "storeName": { "type": "string", "maxLength": 128 },
+        "taxRatePercent": { "type": "number" },
+        "freeShippingThresholdCents": { "type": "number" },
+        "payFastEnabled": { "type": "boolean" },
+        "payFlexEnabled": { "type": "boolean" },
+        "ozowEnabled": { "type": "boolean" },
+        "paystackEnabled": { "type": "boolean" },
+        "cryptoEnabled": { "type": "boolean" }
+      },
+      "required": ["storeName", "taxRatePercent", "freeShippingThresholdCents"]
+    }
+  },
+  "firestore": {
+    "/products/{productId}": {
+      "schema": { "$ref": "Product" },
+      "description": "Public hardware product catalog and Sandton stock records"
+    },
+    "/orders/{orderId}": {
+      "schema": { "$ref": "Order" },
+      "description": "Customer purchase orders and status tracking"
+    },
+    "/customers/{customerId}": {
+      "schema": { "$ref": "Customer" },
+      "description": "Authenticated customer accounts"
+    },
+    "/coupons/{couponCode}": {
+      "schema": { "$ref": "Coupon" },
+      "description": "Store discount and checkout voucher codes"
+    },
+    "/priceAlerts/{alertId}": {
+      "schema": { "$ref": "PriceAlert" },
+      "description": "Automated price drop notification requests"
+    },
+    "/settings/store": {
+      "schema": { "$ref": "StoreSettings" },
+      "description": "Global storefront operational settings"
+    }
+  }
+}

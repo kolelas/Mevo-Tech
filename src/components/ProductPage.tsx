@@ -3,9 +3,12 @@ import { Product, ProductReview, ProductVariant } from '../types';
 import { formatZAR, calculatePayflexInstalments } from '../utils/calculations';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
+import { useComparison } from '../context/ComparisonContext';
 import { api } from '../services/api';
 import { ReviewModal } from './ReviewModal';
 import { ShareModal } from './ShareModal';
+import { PriceDropAlertModal } from './PriceDropAlertModal';
+import { SponsoredAdCard } from './SponsoredAdCard';
 import {
   ShieldCheck,
   Truck,
@@ -29,6 +32,9 @@ import {
   Share2,
   MessageSquarePlus,
   ThumbsUp,
+  Scale,
+  Bell,
+  TrendingDown,
 } from 'lucide-react';
 
 interface ProductPageProps {
@@ -56,6 +62,15 @@ export const ProductPage: React.FC<ProductPageProps> = ({
     toggleWishlist,
   } = useCart();
 
+  const {
+    isInCompare,
+    toggleCompare,
+    addToCompare,
+    setIsComparisonModalOpen,
+  } = useComparison();
+
+  const isCompared = isInCompare(product.id);
+
   const { customer, isCustomerLoggedIn, openAuthModal } = useAuth();
 
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | undefined>(() =>
@@ -72,6 +87,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({
   const [reviewsCount, setReviewsCount] = useState<number>(0);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [isPriceAlertModalOpen, setIsPriceAlertModalOpen] = useState(false);
   const [shareProduct, setShareProduct] = useState<Product | null>(null);
 
   // Load reviews on product mount
@@ -181,7 +197,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({
           </div>
 
           <div className="hidden sm:flex items-center gap-4 text-neutral-300 text-[11px]">
-            <span className="flex items-center gap-1 text-purple-300">
+            <span className="flex items-center gap-1 text-orange-300">
               <PackageCheck className="w-3.5 h-3.5" />
               <span>No import-related duties · 15% VAT included</span>
             </span>
@@ -204,20 +220,20 @@ export const ProductPage: React.FC<ProductPageProps> = ({
                 <span>Safe payments</span>
               </span>
               <span className="flex items-center gap-1.5 text-neutral-800">
-                <Truck className="w-4 h-4 text-purple-600 shrink-0" />
+                <Truck className="w-4 h-4 text-orange-600 shrink-0" />
                 <span>Secure logistics</span>
               </span>
               <span className="flex items-center gap-1.5 text-neutral-800">
-                <Lock className="w-4 h-4 text-purple-600 shrink-0" />
+                <Lock className="w-4 h-4 text-orange-600 shrink-0" />
                 <span>Secure privacy</span>
               </span>
               <span className="flex items-center gap-1.5 text-neutral-800">
-                <ShieldCheck className="w-4 h-4 text-purple-600 shrink-0" />
+                <ShieldCheck className="w-4 h-4 text-orange-600 shrink-0" />
                 <span>Purchase protection</span>
               </span>
             </div>
 
-            <div className="text-purple-600 hover:text-purple-700 font-bold cursor-pointer hidden md:flex items-center gap-1">
+            <div className="text-orange-600 hover:text-orange-700 font-bold cursor-pointer hidden md:flex items-center gap-1">
               <span>Mevo Tech keeps you safe</span>
               <ChevronRight className="w-3.5 h-3.5" />
             </div>
@@ -230,24 +246,50 @@ export const ProductPage: React.FC<ProductPageProps> = ({
         <nav className="flex items-center gap-2 text-xs text-neutral-500 font-medium overflow-x-auto whitespace-nowrap">
           <button
             onClick={onBackToStore}
-            className="hover:text-purple-600 transition-colors flex items-center gap-1 cursor-pointer"
+            className="hover:text-orange-600 transition-colors flex items-center gap-1 cursor-pointer"
           >
             <span>Storefront</span>
           </button>
           <ChevronRight className="w-3 h-3 text-neutral-400 shrink-0" />
-          <span className="hover:text-purple-600 transition-colors cursor-pointer">{product.category}</span>
+          <span className="hover:text-orange-600 transition-colors cursor-pointer">{product.category}</span>
           <ChevronRight className="w-3 h-3 text-neutral-400 shrink-0" />
           <span className="text-neutral-900 font-semibold truncate max-w-md">{product.name}</span>
         </nav>
 
-        {/* Top Share Button */}
-        <button
-          onClick={() => setIsShareModalOpen(true)}
-          className="text-xs font-bold text-neutral-600 hover:text-purple-600 flex items-center gap-1.5 transition-colors cursor-pointer"
-        >
-          <Share2 className="w-3.5 h-3.5" />
-          <span>Share Product</span>
-        </button>
+        {/* Top Actions: Compare, Price Alert & Share */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          <button
+            type="button"
+            onClick={() => setIsPriceAlertModalOpen(true)}
+            className="text-xs font-bold text-neutral-700 hover:text-orange-600 bg-neutral-100 hover:bg-neutral-200 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer"
+            title="Get notified when price drops"
+          >
+            <Bell className="w-3.5 h-3.5 text-orange-600" />
+            <span className="hidden sm:inline">Price Alert</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => toggleCompare(product)}
+            className={`text-xs font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer ${
+              isCompared
+                ? 'bg-orange-600 text-white shadow-xs'
+                : 'text-neutral-700 hover:text-orange-600 bg-neutral-100 hover:bg-neutral-200'
+            }`}
+            title={isCompared ? 'Remove from Comparison' : 'Add to Comparison (up to 3 models)'}
+          >
+            <Scale className="w-3.5 h-3.5" />
+            <span>{isCompared ? 'In Comparison' : 'Compare Model'}</span>
+          </button>
+
+          <button
+            onClick={() => setIsShareModalOpen(true)}
+            className="text-xs font-bold text-neutral-600 hover:text-orange-600 flex items-center gap-1.5 transition-colors cursor-pointer"
+          >
+            <Share2 className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Share</span>
+          </button>
+        </div>
       </div>
 
       {/* 3. Main Product Stage (Matches Reference: Gallery Left + Details & Bundles Center + Sticky Subtotal Right) */}
@@ -267,7 +309,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({
                     className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-300"
                   />
                   {hasDiscount && (
-                    <span className="absolute top-3 left-3 bg-purple-600 text-white font-bold text-xs px-2.5 py-1 rounded-lg uppercase tracking-wider shadow-sm">
+                    <span className="absolute top-3 left-3 bg-orange-600 text-white font-bold text-xs px-2.5 py-1 rounded-lg uppercase tracking-wider shadow-sm">
                       -{discountPercent}% OFF
                     </span>
                   )}
@@ -275,7 +317,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({
                     <button
                       type="button"
                       onClick={() => setIsShareModalOpen(true)}
-                      className="p-2 rounded-full bg-white/90 hover:bg-white text-neutral-600 hover:text-purple-600 shadow-md transition-all cursor-pointer"
+                      className="p-2 rounded-full bg-white/90 hover:bg-white text-neutral-600 hover:text-orange-600 shadow-md transition-all cursor-pointer"
                       title="Share product"
                     >
                       <Share2 className="w-4 h-4" />
@@ -293,6 +335,18 @@ export const ProductPage: React.FC<ProductPageProps> = ({
                         }`}
                       />
                     </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        addToCompare(product);
+                        setIsComparisonModalOpen(true);
+                      }}
+                      className="w-full py-2.5 px-4 rounded-xl text-xs font-bold border border-neutral-300 hover:border-orange-500 hover:bg-orange-50/50 text-neutral-800 hover:text-orange-700 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <Scale className="w-4 h-4 text-orange-600" />
+                      <span>Compare Specs Side-by-Side (Up to 3 Products)</span>
+                    </button>
                   </div>
                 </div>
 
@@ -305,7 +359,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({
                         onClick={() => setActiveImageIndex(idx)}
                         className={`w-16 h-16 rounded-xl overflow-hidden border-2 transition-all shrink-0 cursor-pointer ${
                           activeImageIndex === idx
-                            ? 'border-purple-600 ring-2 ring-purple-100 shadow-sm'
+                            ? 'border-orange-600 ring-2 ring-orange-100 shadow-sm'
                             : 'border-neutral-200 opacity-70 hover:opacity-100'
                         }`}
                       >
@@ -318,7 +372,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({
                 {/* Dispatch guarantee badge */}
                 <div className="p-3.5 bg-neutral-50 rounded-xl border border-neutral-200/80 text-xs text-neutral-600 space-y-2">
                   <div className="flex items-center gap-2">
-                    <Truck className="w-4 h-4 text-purple-600 shrink-0" />
+                    <Truck className="w-4 h-4 text-orange-600 shrink-0" />
                     <span>In stock at Sandton depot · Dispatched in 24h</span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -334,8 +388,8 @@ export const ProductPage: React.FC<ProductPageProps> = ({
                   {/* Brand & Sold statistics (Matches Reference: (8k+ sold), by ZEEMING...) */}
                   <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-500 mb-1.5">
                     <span className="font-bold text-neutral-700">(1,250+ sold),</span>
-                    <span className="flex items-center gap-1 font-semibold text-neutral-800 hover:text-purple-600 transition-colors cursor-pointer">
-                      <Store className="w-3.5 h-3.5 text-purple-600" />
+                    <span className="flex items-center gap-1 font-semibold text-neutral-800 hover:text-orange-600 transition-colors cursor-pointer">
+                      <Store className="w-3.5 h-3.5 text-orange-600" />
                       <span>{product.brand.toUpperCase()} DIRECT SANDTON (200K+ sold)</span>
                       <ChevronRight className="w-3 h-3 text-neutral-400" />
                     </span>
@@ -363,7 +417,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({
                             <span>RRP {formatZAR(originalPrice)}</span>
                             <Info className="w-3.5 h-3.5 text-neutral-400 cursor-pointer" />
                           </span>
-                          <span className="text-xs font-bold bg-purple-100 text-purple-700 px-2 py-0.5 rounded-md">
+                          <span className="text-xs font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-md">
                             -{discountPercent}%
                           </span>
                         </>
@@ -377,9 +431,22 @@ export const ProductPage: React.FC<ProductPageProps> = ({
                     {/* Payflex BNPL Breakdown */}
                     <div className="pt-2 border-t border-neutral-200/60 flex items-center justify-between text-xs text-neutral-600">
                       <span>Or 4 payments of <strong>{formatZAR(payflex.instalmentCents)}</strong> with</span>
-                      <span className="font-bold text-purple-700 bg-purple-100/70 px-2 py-0.5 rounded">
+                      <span className="font-bold text-orange-700 bg-orange-100/70 px-2 py-0.5 rounded">
                         Payflex (0% Interest)
                       </span>
+                    </div>
+
+                    {/* Price Drop Alert Trigger */}
+                    <div className="pt-2 border-t border-neutral-200/50 flex items-center justify-between text-xs">
+                      <span className="text-[11px] text-neutral-500">Waiting for a discount?</span>
+                      <button
+                        type="button"
+                        onClick={() => setIsPriceAlertModalOpen(true)}
+                        className="font-bold text-orange-600 hover:text-orange-700 flex items-center gap-1 cursor-pointer hover:underline"
+                      >
+                        <Bell className="w-3.5 h-3.5" />
+                        <span>Notify me when price drops</span>
+                      </button>
                     </div>
                   </div>
 
@@ -414,7 +481,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({
                       <button
                         type="button"
                         onClick={handleOpenReviewModal}
-                        className="font-bold text-purple-600 hover:text-purple-700 hover:underline flex items-center gap-1 cursor-pointer"
+                        className="font-bold text-orange-600 hover:text-orange-700 hover:underline flex items-center gap-1 cursor-pointer"
                       >
                         <MessageSquarePlus className="w-3.5 h-3.5" />
                         <span>Post Your Review</span>
@@ -449,7 +516,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({
                         {availableStock > 0 ? (
                           <span className="text-emerald-700 font-semibold">
                             {availableStock <= 5 ? (
-                              <span className="text-purple-600 font-bold">{availableStock} almost sold out · Sandton stock</span>
+                              <span className="text-orange-600 font-bold">{availableStock} almost sold out · Sandton stock</span>
                             ) : (
                               <span>{availableStock} units ready for immediate dispatch</span>
                             )}
@@ -468,7 +535,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({
                           ? 'bg-neutral-200 text-neutral-400 cursor-not-allowed'
                           : addedAnimation
                           ? 'bg-emerald-600 text-white'
-                          : 'bg-purple-600 hover:bg-purple-700 text-white hover:shadow-[0_0_25px_rgba(168,85,247,0.45)]'
+                          : 'bg-orange-600 hover:bg-orange-700 text-white hover:shadow-[0_0_25px_rgba(234, 88, 12,0.45)]'
                       }`}
                     >
                       {addedAnimation ? (
@@ -485,6 +552,16 @@ export const ProductPage: React.FC<ProductPageProps> = ({
                         </>
                       )}
                     </button>
+
+                    {/* Notify me when price drops button */}
+                    <button
+                      type="button"
+                      onClick={() => setIsPriceAlertModalOpen(true)}
+                      className="w-full py-3 px-5 rounded-2xl border border-neutral-300 hover:border-orange-500 bg-white hover:bg-orange-50/60 text-neutral-800 hover:text-orange-700 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs group"
+                    >
+                      <Bell className="w-4 h-4 text-orange-600 transition-transform group-hover:scale-110" />
+                      <span>Notify Me When Price Drops</span>
+                    </button>
                   </div>
                 </div>
 
@@ -493,7 +570,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({
                   <div className="pt-6 border-t border-neutral-200/80">
                     <div className="flex items-center justify-between mb-3">
                       <h3 className="text-sm font-bold text-neutral-900">Frequently bought together</h3>
-                      <span className="text-[11px] text-purple-600 font-semibold">Compatible Accessories</span>
+                      <span className="text-[11px] text-orange-600 font-semibold">Compatible Accessories</span>
                     </div>
 
                     <div className="grid grid-cols-3 gap-3">
@@ -504,7 +581,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({
                         return (
                           <div
                             key={candidate.id}
-                            className="p-2.5 rounded-xl border border-neutral-200 hover:border-purple-400 bg-neutral-50/50 flex flex-col justify-between group transition-all"
+                            className="p-2.5 rounded-xl border border-neutral-200 hover:border-orange-400 bg-neutral-50/50 flex flex-col justify-between group transition-all"
                           >
                             <div
                               onClick={() => {
@@ -524,7 +601,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({
                                 onSelectProduct(candidate);
                                 window.scrollTo({ top: 0, behavior: 'smooth' });
                               }}
-                              className="text-[11px] font-bold text-neutral-900 line-clamp-1 cursor-pointer hover:text-purple-600 transition-colors"
+                              className="text-[11px] font-bold text-neutral-900 line-clamp-1 cursor-pointer hover:text-orange-600 transition-colors"
                             >
                               {candidate.name}
                             </p>
@@ -545,7 +622,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({
                                 className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
                                   isAdded
                                     ? 'bg-emerald-600 text-white border-emerald-600'
-                                    : 'bg-white hover:bg-purple-600 hover:text-white text-neutral-700 border-neutral-300'
+                                    : 'bg-white hover:bg-orange-600 hover:text-white text-neutral-700 border-neutral-300'
                                 }`}
                               >
                                 {isAdded ? <Check className="w-3.5 h-3.5" /> : <ShoppingBag className="w-3.5 h-3.5" />}
@@ -567,7 +644,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({
                   <h3 className="text-xs font-bold text-neutral-800 uppercase tracking-wider">
                     Select Specification &amp; Configuration:
                   </h3>
-                  <span className="text-xs text-purple-600 font-semibold">
+                  <span className="text-xs text-orange-600 font-semibold">
                     {selectedVariant?.title || 'Default'}
                   </span>
                 </div>
@@ -582,8 +659,8 @@ export const ProductPage: React.FC<ProductPageProps> = ({
                         onClick={() => setSelectedVariant(v)}
                         className={`p-2 rounded-xl text-left border transition-all cursor-pointer flex flex-col justify-between ${
                           isSelected
-                            ? 'border-purple-600 bg-purple-50/60 ring-2 ring-purple-500 shadow-xs'
-                            : 'border-neutral-200 bg-white hover:border-purple-300'
+                            ? 'border-orange-600 bg-orange-50/60 ring-2 ring-orange-500 shadow-xs'
+                            : 'border-neutral-200 bg-white hover:border-orange-300'
                         }`}
                       >
                         <div className="aspect-square w-full rounded-lg overflow-hidden bg-neutral-100 mb-2">
@@ -591,7 +668,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({
                         </div>
                         <div>
                           <p className="text-xs font-bold text-neutral-900 line-clamp-1">{v.title}</p>
-                          <p className="text-[11px] font-mono font-bold text-purple-700 mt-0.5">
+                          <p className="text-[11px] font-mono font-bold text-orange-700 mt-0.5">
                             {formatZAR(v.promotionalPriceCents || v.priceCents)}
                           </p>
                         </div>
@@ -605,10 +682,23 @@ export const ProductPage: React.FC<ProductPageProps> = ({
             {/* Hardware Specifications Table */}
             {product.specifications && product.specifications.length > 0 && (
               <div className="pt-8 border-t border-neutral-200">
-                <h3 className="text-sm font-bold text-neutral-900 uppercase tracking-wider mb-4 flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-purple-600" />
-                  <span>Verified Depot Hardware Specifications</span>
-                </h3>
+                <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                  <h3 className="text-sm font-bold text-neutral-900 uppercase tracking-wider flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-orange-600" />
+                    <span>Verified Depot Hardware Specifications</span>
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      addToCompare(product);
+                      setIsComparisonModalOpen(true);
+                    }}
+                    className="text-xs font-bold text-orange-600 hover:text-orange-700 hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <Scale className="w-3.5 h-3.5" />
+                    <span>Side-by-Side Comparison</span>
+                  </button>
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                   {product.specifications.map((spec, i) => (
                     <div
@@ -648,12 +738,12 @@ export const ProductPage: React.FC<ProductPageProps> = ({
                     onClick={() => setIsShareModalOpen(true)}
                     className="px-3.5 py-2 border border-neutral-300 rounded-xl hover:bg-neutral-50 text-neutral-700 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
                   >
-                    <Share2 className="w-3.5 h-3.5 text-purple-600" />
+                    <Share2 className="w-3.5 h-3.5 text-orange-600" />
                     <span>Share</span>
                   </button>
                   <button
                     onClick={handleOpenReviewModal}
-                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                    className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
                   >
                     <MessageSquarePlus className="w-4 h-4" />
                     <span>Write a Review</span>
@@ -666,7 +756,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({
                   <p className="text-xs text-neutral-500 mb-2">Be the first to review this verified hardware SKU!</p>
                   <button
                     onClick={handleOpenReviewModal}
-                    className="text-xs font-bold text-purple-600 hover:underline cursor-pointer"
+                    className="text-xs font-bold text-orange-600 hover:underline cursor-pointer"
                   >
                     Submit the first customer review
                   </button>
@@ -714,7 +804,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({
           <div className="lg:col-span-3 sticky top-24 space-y-4">
             {/* Red/Purple Subtotal Card */}
             <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-sm">
-              <div className="bg-purple-600 text-white px-4 py-3 flex items-center justify-between">
+              <div className="bg-orange-600 text-white px-4 py-3 flex items-center justify-between">
                 <div className="flex items-center gap-2 font-bold text-sm">
                   <ShoppingBag className="w-4 h-4" />
                   <span>Subtotal ({itemCount})</span>
@@ -732,7 +822,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({
                       {formatZAR(subtotalCents)}
                     </span>
                     {subtotalCents > 150000 && (
-                      <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">
+                      <span className="text-[10px] font-bold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded">
                         -R150
                       </span>
                     )}
@@ -745,7 +835,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({
                     <span>Free shipping (Sandton Depot direct)</span>
                   </div>
                   <div className="flex items-center gap-2 text-neutral-600">
-                    <Check className="w-4 h-4 shrink-0 text-purple-600" />
+                    <Check className="w-4 h-4 shrink-0 text-orange-600" />
                     <span>Eligible to use Payflex 0% interest</span>
                   </div>
                 </div>
@@ -753,7 +843,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({
                 <div className="space-y-2 pt-2">
                   <button
                     onClick={onProceedToCheckout}
-                    className="w-full py-3.5 px-4 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md hover:shadow-[0_0_20px_rgba(168,85,247,0.35)] transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    className="w-full py-3.5 px-4 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md hover:shadow-[0_0_20px_rgba(234, 88, 12,0.35)] transition-all flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <span>{itemCount > 0 ? `${itemCount} almost sold out · Checkout` : 'Proceed to Checkout'}</span>
                     <ArrowRight className="w-4 h-4" />
@@ -798,7 +888,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({
                             <p className="text-[11px] font-bold text-neutral-900 truncate">{cartItem.name}</p>
                             <p className="text-[10px] text-neutral-500 font-mono">{formatZAR(cartItem.priceCents)}</p>
                           </div>
-                          <span className="text-[9px] font-bold text-purple-700 bg-purple-100 px-1.5 py-0.5 rounded shrink-0">
+                          <span className="text-[9px] font-bold text-orange-700 bg-orange-100 px-1.5 py-0.5 rounded shrink-0">
                             Almost sold out
                           </span>
                         </div>
@@ -811,14 +901,17 @@ export const ProductPage: React.FC<ProductPageProps> = ({
 
             {/* Support and Sandton Depot Assist Card */}
             <div className="bg-white rounded-2xl border border-neutral-200 p-4 shadow-sm text-xs text-neutral-600 space-y-2">
-              <div className="flex items-center gap-2 text-purple-700 font-bold">
-                <Clock className="w-4 h-4 text-purple-600" />
+              <div className="flex items-center gap-2 text-orange-700 font-bold">
+                <Clock className="w-4 h-4 text-orange-600" />
                 <span>Need expert advice?</span>
               </div>
               <p className="text-[11px] leading-relaxed text-neutral-500">
                 Call our Sandton hardware team on <strong>+27 11 884 9200</strong> or email <strong>support@mevotech.co.za</strong>.
               </p>
             </div>
+
+            {/* Reserved Premium Sponsored Ad Space (Matches Image 1 Reference Space) */}
+            <SponsoredAdCard placement="product_sidebar" />
           </div>
 
         </div>
@@ -827,7 +920,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({
         <div className="mt-14 pt-8 border-t border-neutral-300">
           <div className="flex flex-col sm:flex-row items-baseline justify-between gap-2 mb-6">
             <div>
-              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-purple-600 mb-1">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-orange-600 mb-1">
                 <Zap className="w-4 h-4" />
                 <span>You May Also Like</span>
               </div>
@@ -856,7 +949,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({
                     onSelectProduct(item);
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                   }}
-                  className="group bg-white rounded-2xl border border-neutral-200 hover:border-purple-500 overflow-hidden shadow-xs hover:shadow-[0_4px_20px_rgba(168,85,247,0.25)] transition-all cursor-pointer flex flex-col justify-between"
+                  className="group bg-white rounded-2xl border border-neutral-200 hover:border-orange-500 overflow-hidden shadow-xs hover:shadow-[0_4px_20px_rgba(234, 88, 12,0.25)] transition-all cursor-pointer flex flex-col justify-between"
                 >
                   <div className="relative aspect-square bg-neutral-100 overflow-hidden">
                     <img
@@ -865,7 +958,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({
                       className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-300"
                     />
                     {hasItemDiscount && (
-                      <span className="absolute top-2 left-2 bg-purple-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
+                      <span className="absolute top-2 left-2 bg-orange-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
                         -{discount}%
                       </span>
                     )}
@@ -876,7 +969,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({
                       <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block mb-0.5">
                         {item.brand}
                       </span>
-                      <h4 className="text-xs font-bold text-neutral-900 line-clamp-2 group-hover:text-purple-600 transition-colors">
+                      <h4 className="text-xs font-bold text-neutral-900 line-clamp-2 group-hover:text-orange-600 transition-colors">
                         {item.name}
                       </h4>
                     </div>
@@ -903,7 +996,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({
                             e.stopPropagation();
                             addItem(item, undefined, 1);
                           }}
-                          className="p-1.5 rounded-lg bg-neutral-100 group-hover:bg-purple-600 group-hover:text-white text-neutral-700 transition-colors cursor-pointer"
+                          className="p-1.5 rounded-lg bg-neutral-100 group-hover:bg-orange-600 group-hover:text-white text-neutral-700 transition-colors cursor-pointer"
                           title="Add to shopping bag"
                         >
                           <ShoppingBag className="w-3.5 h-3.5" />
@@ -936,6 +1029,13 @@ export const ProductPage: React.FC<ProductPageProps> = ({
           setIsShareModalOpen(false);
           setShareProduct(null);
         }}
+      />
+
+      {/* Price Drop Alert Subscription Modal */}
+      <PriceDropAlertModal
+        product={product}
+        isOpen={isPriceAlertModalOpen}
+        onClose={() => setIsPriceAlertModalOpen(false)}
       />
     </div>
   );

@@ -1,0 +1,84 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    function incoming() {
+      return request.resource.data;
+    }
+    function existing() {
+      return resource.data;
+    }
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'blacquebeat@gmail.com' ||
+        request.auth.token.email == 'admin@mevotech.co.za' ||
+        request.auth.token.email == 'owner@mevotech.co.za'
+      );
+    }
+
+    // Connection probe endpoint
+    match /test/{docId} {
+      allow get: if true;
+    }
+
+    // Hardware catalog & products
+    match /products/{productId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Customer purchase orders
+    match /orders/{orderId} {
+      allow get: if isAdmin() || (isSignedIn() && resource.data.customerId == request.auth.uid);
+      allow list: if isAdmin() || (isSignedIn() && resource.data.customerId == request.auth.uid);
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Customer accounts (PII protection)
+    match /customers/{customerId} {
+      allow get: if isOwner(customerId) || isAdmin();
+      allow list: if isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Discount vouchers & coupons
+    match /coupons/{couponCode} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Price drop alerts
+    match /priceAlerts/{alertId} {
+      allow get: if isAdmin() || (isSignedIn() && resource.data.email == request.auth.token.email);
+      allow list: if isAdmin();
+      allow create: if incoming().email is string && incoming().productId is string;
+      allow update, delete: if isAdmin();
+    }
+
+    // Store settings & configuration
+    match /settings/{settingId} {
+      allow get: if true;
+      allow list, write: if isAdmin();
+    }
+
+    // Audit logs
+    match /auditLogs/{logId} {
+      allow read, write: if isAdmin();
+    }
+  }
+}

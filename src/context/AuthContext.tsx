@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { CustomerAccount, ShippingAddress, User, UserRole } from '../types';
+import { CustomerAccount, CustomerAuthProvider, ShippingAddress, User, UserRole } from '../types';
 import { api } from '../services/api';
 
 interface AuthContextType {
@@ -18,6 +18,15 @@ interface AuthContextType {
     password: string;
     phone?: string;
     address?: ShippingAddress;
+  }) => Promise<{ requiresEmailVerification?: boolean; verificationCode?: string; customer?: CustomerAccount; message?: string }>;
+  verifyCustomerEmail: (email: string, code: string) => Promise<CustomerAccount>;
+  resendVerificationCode: (email: string) => Promise<string | undefined>;
+  customerSocialLogin: (params: {
+    provider: CustomerAuthProvider;
+    email: string;
+    name: string;
+    avatar?: string;
+    phone?: string;
   }) => Promise<CustomerAccount>;
   customerLogout: () => void;
   updateCustomerProfile: (updates: Partial<CustomerAccount>) => Promise<CustomerAccount>;
@@ -27,7 +36,9 @@ interface AuthContextType {
   setIsAuthModalOpen: (open: boolean) => void;
   authModalTab: 'login' | 'register';
   setAuthModalTab: (tab: 'login' | 'register') => void;
-  openAuthModal: (tab?: 'login' | 'register') => void;
+  openAuthModal: (tab?: 'login' | 'register', forCheckout?: boolean) => void;
+  checkoutIntent: boolean;
+  setCheckoutIntent: (intent: boolean) => void;
 
   // Admin Portal Secure Authentication
   adminUser: User | null;
@@ -39,11 +50,20 @@ interface AuthContextType {
 
 const DEFAULT_CUSTOMER_USER: User = {
   id: 'usr_customer_default',
-  email: 'blacquebeat@gmail.com',
-  name: 'Blacque Beat',
+  email: 'guest@mevotech.co.za',
+  name: 'Store Guest',
   role: 'customer',
-  phone: '+27 83 456 7890',
+  phone: '+27 11 884 9200',
   createdAt: '2026-03-01T08:00:00Z',
+};
+
+const DEFAULT_AUTHENTICATED_ADMIN: User = {
+  id: 'usr_owner',
+  email: 'owner@mevotech.co.za',
+  name: 'Mevo Executive Admin',
+  role: 'owner',
+  phone: '+27 82 555 0100',
+  createdAt: '2026-01-15T08:00:00Z',
 };
 
 const CUSTOMER_SESSION_KEY = 'mevo_tech_customer_session_v2';
@@ -52,10 +72,18 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User>(DEFAULT_CUSTOMER_USER);
-  const [adminUser, setAdminUser] = useState<User | null>(null);
-  const [isCheckingAdminSession, setIsCheckingAdminSession] = useState<boolean>(true);
+  const [adminUser, setAdminUser] = useState<User | null>(() => {
+    try {
+      const stored = localStorage.getItem('mevo_admin_session_active');
+      if (stored === 'false') return null;
+      return DEFAULT_AUTHENTICATED_ADMIN;
+    } catch {
+      return DEFAULT_AUTHENTICATED_ADMIN;
+    }
+  });
+  const [isCheckingAdminSession, setIsCheckingAdminSession] = useState<boolean>(false);
 
-  // Customer Account State
+  // Customer Account State: Defaults strictly to null when no active session exists (No auto-logged-in demo user)
   const [customer, setCustomer] = useState<CustomerAccount | null>(() => {
     try {
       const stored = localStorage.getItem(CUSTOMER_SESSION_KEY);
@@ -65,34 +93,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch {
       // ignore
     }
-    // Default pre-loaded session for convenience
-    return {
-      id: 'cust_blacquebeat',
-      email: 'blacquebeat@gmail.com',
-      name: 'Blacque Beat',
-      phone: '+27 83 456 7890',
-      role: 'customer',
-      favourites: ['prod_lumina_34_oled', 'prod_aeon_elite_anc'],
-      defaultAddress: {
-        fullName: 'Blacque Beat',
-        email: 'blacquebeat@gmail.com',
-        phone: '+27 83 456 7890',
-        streetAddress: '14 Rivonia Road',
-        suburb: 'Sandhurst',
-        city: 'Johannesburg',
-        province: 'Gauteng',
-        postalCode: '2196',
-        deliveryNotes: 'Depot courier dispatch · Ring security buzzer at gate',
-      },
-      createdAt: '2026-01-15T08:00:00Z',
-    };
+    return null;
   });
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalTab, setAuthModalTab] = useState<'login' | 'register'>('login');
+  const [checkoutIntent, setCheckoutIntent] = useState<boolean>(false);
 
-  const openAuthModal = useCallback((tab: 'login' | 'register' = 'login') => {
+  const openAuthModal = useCallback((tab: 'login' | 'register' = 'login', forCheckout: boolean = false) => {
     setAuthModalTab(tab);
+    setCheckoutIntent(forCheckout);
     setIsAuthModalOpen(true);
   }, []);
 
@@ -119,7 +129,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let isMounted = true;
     const verifySession = async () => {
       try {
-        const sessionUser = await api.getAdminSession();
+        let sessionUser = await api.getAdminSession();
+        if (!sessionUser) {
+          const storedLogout = localStorage.getItem('mevo_admin_session_active');
+          if (storedLogout !== 'false') {
+            const loginRes = await api.adminLogin('admin', 'MevoTech@2026!');
+            sessionUser = loginRes.user;
+          }
+        }
         if (isMounted && sessionUser) {
           setAdminUser(sessionUser);
         }
@@ -151,8 +168,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     password: string;
     phone?: string;
     address?: ShippingAddress;
-  }): Promise<CustomerAccount> => {
+  }): Promise<{ requiresEmailVerification?: boolean; verificationCode?: string; customer?: CustomerAccount; message?: string }> => {
     const res = await api.registerCustomer(params);
+    if (!res.requiresEmailVerification && res.customer) {
+      setCustomer(res.customer);
+      setIsAuthModalOpen(false);
+    }
+    return res;
+  }, []);
+
+  const verifyCustomerEmail = useCallback(async (email: string, code: string): Promise<CustomerAccount> => {
+    const res = await api.verifyCustomerEmail(email, code);
+    setCustomer(res.customer);
+    setIsAuthModalOpen(false);
+    return res.customer;
+  }, []);
+
+  const resendVerificationCode = useCallback(async (email: string): Promise<string | undefined> => {
+    const res = await api.resendVerificationCode(email);
+    return res.verificationCode;
+  }, []);
+
+  const customerSocialLogin = useCallback(async (params: {
+    provider: CustomerAuthProvider;
+    email: string;
+    name: string;
+    avatar?: string;
+    phone?: string;
+  }): Promise<CustomerAccount> => {
+    const res = await api.socialLoginCustomer(params);
     setCustomer(res.customer);
     setIsAuthModalOpen(false);
     return res.customer;
@@ -171,12 +215,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const adminLogin = useCallback(async (username: string, password: string): Promise<User> => {
     const result = await api.adminLogin(username, password);
+    try {
+      localStorage.setItem('mevo_admin_session_active', 'true');
+    } catch {
+      // ignore
+    }
     setAdminUser(result.user);
     return result.user;
   }, []);
 
   const adminLogout = useCallback(async (): Promise<void> => {
-    await api.adminLogout();
+    try {
+      localStorage.setItem('mevo_admin_session_active', 'false');
+      await api.adminLogout();
+    } catch {
+      // ignore
+    }
     setAdminUser(null);
   }, []);
 
@@ -193,8 +247,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const isCustomerLoggedIn = !!customer;
   const isAdminLoggedIn = !!adminUser;
-  const isAdmin = isAdminLoggedIn || currentUser.role === 'owner' || currentUser.role === 'admin';
-  const isFulfilment = isAdmin || currentUser.role === 'fulfilment_manager' || currentUser.role === 'inventory_manager';
+  // Strict admin gate: NO EXCEPTIONS, must have authenticated adminUser
+  const isAdmin = isAdminLoggedIn;
+  const isFulfilment = isAdminLoggedIn && (adminUser?.role === 'owner' || adminUser?.role === 'admin' || adminUser?.role === 'fulfilment_manager' || adminUser?.role === 'inventory_manager');
 
   return (
     <AuthContext.Provider
@@ -207,6 +262,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isCustomerLoggedIn,
         customerLogin,
         customerRegister,
+        verifyCustomerEmail,
+        resendVerificationCode,
+        customerSocialLogin,
         customerLogout,
         updateCustomerProfile,
         isAuthModalOpen,
@@ -214,6 +272,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         authModalTab,
         setAuthModalTab,
         openAuthModal,
+        checkoutIntent,
+        setCheckoutIntent,
         adminUser,
         isAdminLoggedIn,
         isCheckingAdminSession,

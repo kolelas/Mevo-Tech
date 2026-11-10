@@ -78,12 +78,12 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
         </div>
 
         {/* Product Snippet */}
-        <div className="p-4 bg-purple-50/50 border-b border-purple-100 flex items-center gap-3">
+        <div className="p-4 bg-orange-50/50 border-b border-orange-100 flex items-center gap-3">
           <div className="w-12 h-12 rounded-lg overflow-hidden bg-white border border-neutral-200 shrink-0">
             <img src={product.primaryImage} alt="" className="w-full h-full object-cover" />
           </div>
           <div className="min-w-0 flex-1">
-            <span className="text-[10px] font-bold text-purple-700 uppercase tracking-wider block">
+            <span className="text-[10px] font-bold text-orange-700 uppercase tracking-wider block">
               {product.brand}
             </span>
             <p className="text-xs font-bold text-neutral-900 truncate">{product.name}</p>
@@ -144,7 +144,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
               value={authorName}
               onChange={(e) => setAuthorName(e.target.value)}
               placeholder="e.g. John D. or Blacque Beat"
-              className="w-full px-3 py-2 bg-neutral-50 border border-neutral-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 font-medium"
+              className="w-full px-3 py-2 bg-neutral-50 border border-neutral-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500 font-medium"
             />
           </div>
 
@@ -157,7 +157,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Exceptional display quality and rapid courier delivery"
-              className="w-full px-3 py-2 bg-neutral-50 border border-neutral-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 font-medium"
+              className="w-full px-3 py-2 bg-neutral-50 border border-neutral-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500 font-medium"
             />
           </div>
 
@@ -170,7 +170,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
               value={comment}
               onChange={(e) => setComment(e.target.value)}
               placeholder="Describe performance, build quality, thermals, ergonomics, or depot dispatch..."
-              className="w-full px-3 py-2 bg-neutral-50 border border-neutral-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 font-medium resize-none"
+              className="w-full px-3 py-2 bg-neutral-50 border border-neutral-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500 font-medium resize-none"
             />
           </div>
 
@@ -185,7 +185,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
             <button
               type="submit"
               disabled={isLoading}
-              className="px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl shadow-md hover:shadow-lg transition-all cursor-pointer disabled:opacity-50"
+              className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl shadow-md hover:shadow-lg transition-all cursor-pointer disabled:opacity-50"
             >
               {isLoading ? 'Posting...' : 'Submit Review'}
             </button>

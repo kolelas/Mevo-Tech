@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { api } from '../services/api';
-import { Order, Product, ProductReview, ShippingAddress } from '../types';
+import { Order, Product, ProductReview, ShippingAddress, PriceAlert } from '../types';
 import { formatZAR } from '../utils/calculations';
 import { ReviewModal } from './ReviewModal';
 import { ShareModal } from './ShareModal';
@@ -27,6 +27,12 @@ import {
   ShieldCheck,
   RefreshCw,
   Sparkles,
+  Download,
+  Trash2,
+  Lock,
+  ShieldAlert,
+  Bell,
+  TrendingDown,
 } from 'lucide-react';
 
 interface CustomerDashboardProps {
@@ -47,9 +53,11 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
   const { customer, customerLogout, updateCustomerProfile, openAuthModal } = useAuth();
   const { addItem, wishlist, toggleWishlist } = useCart();
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'bought' | 'favourites' | 'profile'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'bought' | 'favourites' | 'profile' | 'alerts'>(initialTab);
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
+  const [priceAlerts, setPriceAlerts] = useState<PriceAlert[]>([]);
+  const [isLoadingAlerts, setIsLoadingAlerts] = useState(false);
   const [selectedOrderForTracking, setSelectedOrderForTracking] = useState<Order | null>(null);
   const [selectedInvoiceOrder, setSelectedInvoiceOrder] = useState<Order | null>(null);
 
@@ -68,6 +76,51 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
   const [profileNotes, setProfileNotes] = useState(customer?.defaultAddress?.deliveryNotes || '');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [profileSuccess, setProfileSuccess] = useState<string | null>(null);
+  const [isExportingData, setIsExportingData] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [popiaMessage, setPopiaMessage] = useState<string | null>(null);
+
+  const handleExportData = async () => {
+    if (!customer) return;
+    try {
+      setIsExportingData(true);
+      const data = await api.exportCustomerData(customer.id);
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `mevotech-popia-data-archive-${customer.id}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setPopiaMessage('POPIA Data Subject Access Archive exported successfully.');
+      setTimeout(() => setPopiaMessage(null), 6000);
+    } catch (err: any) {
+      alert(err.message || 'Failed to export data archive');
+    } finally {
+      setIsExportingData(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!customer) return;
+    const confirmed = window.confirm(
+      'POPIA Section 14 Request: Are you sure you want to permanently erase your MEVO TECH customer account and purge all personal identifiable records? This action is irreversible.'
+    );
+    if (!confirmed) return;
+
+    try {
+      setIsDeletingAccount(true);
+      await api.deleteCustomerAccount(customer.id);
+      alert('Your customer account and personal data have been permanently erased. Logging out.');
+      customerLogout();
+      onBackToStore();
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete account');
+      setIsDeletingAccount(false);
+    }
+  };
 
   // Sync profile form when customer changes
   useEffect(() => {
@@ -99,14 +152,37 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
     }
   };
 
+  const loadPriceAlerts = async () => {
+    if (!customer?.email) return;
+    setIsLoadingAlerts(true);
+    try {
+      const data = await api.getPriceAlerts(customer.email);
+      setPriceAlerts(data);
+    } catch (err) {
+      console.warn('Could not load price alerts', err);
+    } finally {
+      setIsLoadingAlerts(false);
+    }
+  };
+
+  const handleCancelAlert = async (alertId: string) => {
+    try {
+      await api.cancelPriceAlert(alertId, customer?.email);
+      await loadPriceAlerts();
+    } catch (err: any) {
+      alert(err.message || 'Failed to cancel price alert');
+    }
+  };
+
   useEffect(() => {
     loadCustomerOrders();
+    loadPriceAlerts();
   }, [customer]);
 
   if (!customer) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-16 text-center">
-        <div className="w-16 h-16 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mx-auto mb-4 border border-purple-200">
+        <div className="w-16 h-16 rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center mx-auto mb-4 border border-orange-200">
           <User className="w-8 h-8" />
         </div>
         <h2 className="text-2xl font-black text-neutral-900">Sign in to Access Your Account</h2>
@@ -116,7 +192,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
         <div className="flex items-center justify-center gap-4">
           <button
             onClick={() => openAuthModal('login')}
-            className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors shadow-md cursor-pointer"
+            className="px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors shadow-md cursor-pointer"
           >
             Sign In / Register
           </button>
@@ -196,7 +272,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-500 text-white flex items-center justify-center font-black text-2xl shadow-lg border-2 border-white/20">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-orange-600 to-indigo-500 text-white flex items-center justify-center font-black text-2xl shadow-lg border-2 border-white/20">
                 {customer.name.charAt(0).toUpperCase()}
               </div>
               <div>
@@ -207,8 +283,8 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                   </span>
                 </div>
                 <p className="text-xs text-neutral-400 mt-0.5">{customer.email} · {customer.phone}</p>
-                <p className="text-[11px] text-purple-400 mt-1 flex items-center gap-1.5 font-medium">
-                  <ShieldCheck className="w-3.5 h-3.5 text-purple-400" />
+                <p className="text-[11px] text-orange-400 mt-1 flex items-center gap-1.5 font-medium">
+                  <ShieldCheck className="w-3.5 h-3.5 text-orange-400" />
                   <span>Sandton Depot Priority Dispatch Privileges Active</span>
                 </p>
               </div>
@@ -237,7 +313,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
               onClick={() => setActiveTab('overview')}
               className={`px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
                 activeTab === 'overview'
-                  ? 'bg-purple-600 text-white shadow-md'
+                  ? 'bg-orange-600 text-white shadow-md'
                   : 'text-neutral-400 hover:text-white hover:bg-neutral-800'
               }`}
             >
@@ -249,7 +325,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
               onClick={() => setActiveTab('orders')}
               className={`px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
                 activeTab === 'orders'
-                  ? 'bg-purple-600 text-white shadow-md'
+                  ? 'bg-orange-600 text-white shadow-md'
                   : 'text-neutral-400 hover:text-white hover:bg-neutral-800'
               }`}
             >
@@ -261,7 +337,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
               onClick={() => setActiveTab('bought')}
               className={`px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
                 activeTab === 'bought'
-                  ? 'bg-purple-600 text-white shadow-md'
+                  ? 'bg-orange-600 text-white shadow-md'
                   : 'text-neutral-400 hover:text-white hover:bg-neutral-800'
               }`}
             >
@@ -273,7 +349,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
               onClick={() => setActiveTab('favourites')}
               className={`px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
                 activeTab === 'favourites'
-                  ? 'bg-purple-600 text-white shadow-md'
+                  ? 'bg-orange-600 text-white shadow-md'
                   : 'text-neutral-400 hover:text-white hover:bg-neutral-800'
               }`}
             >
@@ -285,12 +361,24 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
               onClick={() => setActiveTab('profile')}
               className={`px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
                 activeTab === 'profile'
-                  ? 'bg-purple-600 text-white shadow-md'
+                  ? 'bg-orange-600 text-white shadow-md'
                   : 'text-neutral-400 hover:text-white hover:bg-neutral-800'
               }`}
             >
               <Settings className="w-4 h-4" />
               <span>Profile &amp; Delivery Address</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('alerts')}
+              className={`px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
+                activeTab === 'alerts'
+                  ? 'bg-orange-600 text-white shadow-md'
+                  : 'text-neutral-400 hover:text-white hover:bg-neutral-800'
+              }`}
+            >
+              <Bell className="w-4 h-4" />
+              <span>Price Alerts ({priceAlerts.filter((a) => a.status === 'ACTIVE').length})</span>
             </button>
           </div>
         </div>
@@ -303,13 +391,13 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
         {activeTab === 'overview' && (
           <div className="space-y-8">
             {/* Quick Stats Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               <div className="bg-white p-5 rounded-2xl border border-neutral-200 shadow-xs flex items-center justify-between">
                 <div>
                   <span className="text-xs text-neutral-500 font-semibold uppercase tracking-wider">Total Orders</span>
                   <p className="text-2xl font-black font-mono text-neutral-900 mt-1">{orders.length}</p>
                 </div>
-                <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
+                <div className="w-12 h-12 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center">
                   <Package className="w-6 h-6" />
                 </div>
               </div>
@@ -343,18 +431,33 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                   <Heart className="w-6 h-6" />
                 </div>
               </div>
+
+              <div
+                onClick={() => setActiveTab('alerts')}
+                className="bg-white p-5 rounded-2xl border border-neutral-200 shadow-xs flex items-center justify-between cursor-pointer hover:border-orange-500 transition-colors"
+              >
+                <div>
+                  <span className="text-xs text-neutral-500 font-semibold uppercase tracking-wider">Price Alerts</span>
+                  <p className="text-2xl font-black font-mono text-orange-600 mt-1">
+                    {priceAlerts.filter((a) => a.status === 'ACTIVE').length}
+                  </p>
+                </div>
+                <div className="w-12 h-12 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center">
+                  <Bell className="w-6 h-6" />
+                </div>
+              </div>
             </div>
 
             {/* Recent Orders Overview */}
             <div className="bg-white rounded-2xl border border-neutral-200 shadow-xs overflow-hidden">
               <div className="p-5 border-b border-neutral-200 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-purple-600" />
+                  <Clock className="w-4 h-4 text-orange-600" />
                   <h3 className="text-sm font-bold text-neutral-900">Recent Hardware Shipments</h3>
                 </div>
                 <button
                   onClick={() => setActiveTab('orders')}
-                  className="text-xs font-bold text-purple-600 hover:text-purple-700 flex items-center gap-1 cursor-pointer"
+                  className="text-xs font-bold text-orange-600 hover:text-orange-700 flex items-center gap-1 cursor-pointer"
                 >
                   <span>View all orders</span>
                   <ChevronRight className="w-4 h-4" />
@@ -377,7 +480,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                               order.status === 'DELIVERED'
                                 ? 'bg-emerald-100 text-emerald-800'
                                 : order.status === 'SHIPPED'
-                                ? 'bg-purple-100 text-purple-800'
+                                ? 'bg-orange-100 text-orange-800'
                                 : order.status === 'PAID'
                                 ? 'bg-blue-100 text-blue-800'
                                 : 'bg-amber-100 text-amber-800'
@@ -400,7 +503,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                             setSelectedOrderForTracking(order);
                             setActiveTab('orders');
                           }}
-                          className="px-3 py-1.5 bg-neutral-900 hover:bg-purple-600 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                          className="px-3 py-1.5 bg-neutral-900 hover:bg-orange-600 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
                         >
                           Track Shipment
                         </button>
@@ -432,10 +535,10 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
 
             {/* Active Tracking Spotlight Card (if an order is selected) */}
             {selectedOrderForTracking && (
-              <div className="bg-white rounded-2xl border-2 border-purple-200 shadow-sm overflow-hidden p-6 space-y-6">
+              <div className="bg-white rounded-2xl border-2 border-orange-200 shadow-sm overflow-hidden p-6 space-y-6">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-neutral-200 gap-3">
                   <div>
-                    <span className="text-xs font-bold uppercase tracking-wider text-purple-600">
+                    <span className="text-xs font-bold uppercase tracking-wider text-orange-600">
                       Live Delivery Progress
                     </span>
                     <h3 className="text-lg font-black text-neutral-900 font-mono mt-0.5">
@@ -448,7 +551,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                       {selectedOrderForTracking.courierName || 'The Courier Guy'}
                     </span>
                     {selectedOrderForTracking.trackingNumber && (
-                      <span className="font-mono text-xs font-bold text-purple-700 bg-purple-50 px-2.5 py-1 rounded-lg border border-purple-200">
+                      <span className="font-mono text-xs font-bold text-orange-700 bg-orange-50 px-2.5 py-1 rounded-lg border border-orange-200">
                         AWB: {selectedOrderForTracking.trackingNumber}
                       </span>
                     )}
@@ -467,14 +570,14 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                       key={idx}
                       className={`p-3.5 rounded-xl border flex flex-col justify-between ${
                         step.done
-                          ? 'bg-purple-50/70 border-purple-300 text-purple-950'
+                          ? 'bg-orange-50/70 border-orange-300 text-orange-950'
                           : 'bg-neutral-50 border-neutral-200 text-neutral-400'
                       }`}
                     >
                       <div className="flex items-center gap-2 mb-2">
                         <div
                           className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs ${
-                            step.done ? 'bg-purple-600 text-white' : 'bg-neutral-200 text-neutral-500'
+                            step.done ? 'bg-orange-600 text-white' : 'bg-neutral-200 text-neutral-500'
                           }`}
                         >
                           {step.done ? '✓' : idx + 1}
@@ -515,7 +618,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                               </button>
                               <button
                                 onClick={() => setShareProduct(fullProd)}
-                                className="p-1 rounded text-neutral-500 hover:text-purple-600 cursor-pointer"
+                                className="p-1 rounded text-neutral-500 hover:text-orange-600 cursor-pointer"
                                 title="Share"
                               >
                                 <Share2 className="w-4 h-4" />
@@ -549,7 +652,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                       onClick={() => setSelectedInvoiceOrder(selectedOrderForTracking)}
                       className="px-3.5 py-2 bg-white hover:bg-neutral-50 text-neutral-700 border border-neutral-300 font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer"
                     >
-                      <FileText className="w-4 h-4 text-purple-600" />
+                      <FileText className="w-4 h-4 text-orange-600" />
                       <span>View Tax Invoice</span>
                     </button>
                   </div>
@@ -575,7 +678,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                       key={order.reference}
                       onClick={() => setSelectedOrderForTracking(order)}
                       className={`p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer hover:bg-neutral-50 transition-colors ${
-                        selectedOrderForTracking?.reference === order.reference ? 'bg-purple-50/40' : ''
+                        selectedOrderForTracking?.reference === order.reference ? 'bg-orange-50/40' : ''
                       }`}
                     >
                       <div className="space-y-1">
@@ -586,7 +689,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                               order.status === 'DELIVERED'
                                 ? 'bg-emerald-100 text-emerald-800'
                                 : order.status === 'SHIPPED'
-                                ? 'bg-purple-100 text-purple-800'
+                                ? 'bg-orange-100 text-orange-800'
                                 : order.status === 'PAID'
                                 ? 'bg-blue-100 text-blue-800'
                                 : 'bg-amber-100 text-amber-800'
@@ -604,7 +707,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                         <span className="font-mono font-black text-sm text-neutral-900">
                           {formatZAR(order.totalCents)}
                         </span>
-                        <span className="text-xs font-bold text-purple-600 flex items-center gap-1">
+                        <span className="text-xs font-bold text-orange-600 flex items-center gap-1">
                           <span>Details</span>
                           <ChevronRight className="w-4 h-4" />
                         </span>
@@ -638,7 +741,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                 </p>
                 <button
                   onClick={onBackToStore}
-                  className="px-4 py-2 bg-purple-600 text-white rounded-xl text-xs font-bold"
+                  className="px-4 py-2 bg-orange-600 text-white rounded-xl text-xs font-bold"
                 >
                   Explore Storefront
                 </button>
@@ -648,7 +751,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                 {boughtProducts.map(({ product, order, purchasedAt }) => (
                   <div
                     key={product.id}
-                    className="bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-xs hover:border-purple-400 transition-all flex flex-col justify-between"
+                    className="bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-xs hover:border-orange-400 transition-all flex flex-col justify-between"
                   >
                     <div className="relative aspect-4/3 bg-neutral-100 overflow-hidden">
                       <img src={product.primaryImage} alt={product.name} className="w-full h-full object-cover" />
@@ -665,7 +768,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                         </span>
                         <h4
                           onClick={() => onSelectProduct(product)}
-                          className="text-sm font-bold text-neutral-900 hover:text-purple-600 transition-colors cursor-pointer mt-1"
+                          className="text-sm font-bold text-neutral-900 hover:text-orange-600 transition-colors cursor-pointer mt-1"
                         >
                           {product.name}
                         </h4>
@@ -687,7 +790,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                           onClick={() => {
                             addItem(product, undefined, 1);
                           }}
-                          className="py-2 px-3 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-xs flex items-center gap-1 transition-colors cursor-pointer"
+                          className="py-2 px-3 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs flex items-center gap-1 transition-colors cursor-pointer"
                           title="Buy again"
                         >
                           <ShoppingBag className="w-3.5 h-3.5" />
@@ -731,7 +834,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                 </p>
                 <button
                   onClick={onBackToStore}
-                  className="px-4 py-2 bg-purple-600 text-white rounded-xl text-xs font-bold"
+                  className="px-4 py-2 bg-orange-600 text-white rounded-xl text-xs font-bold"
                 >
                   Browse Hardware
                 </button>
@@ -741,7 +844,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                 {favouriteProducts.map((product) => (
                   <div
                     key={product.id}
-                    className="bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-xs hover:border-purple-400 transition-all flex flex-col justify-between"
+                    className="bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-xs hover:border-orange-400 transition-all flex flex-col justify-between"
                   >
                     <div
                       onClick={() => onSelectProduct(product)}
@@ -766,7 +869,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                         </span>
                         <h4
                           onClick={() => onSelectProduct(product)}
-                          className="text-xs font-bold text-neutral-900 line-clamp-2 hover:text-purple-600 transition-colors cursor-pointer mt-0.5"
+                          className="text-xs font-bold text-neutral-900 line-clamp-2 hover:text-orange-600 transition-colors cursor-pointer mt-0.5"
                         >
                           {product.name}
                         </h4>
@@ -778,7 +881,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                         </span>
                         <button
                           onClick={() => addItem(product, undefined, 1)}
-                          className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg text-xs flex items-center gap-1 transition-colors cursor-pointer"
+                          className="px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-lg text-xs flex items-center gap-1 transition-colors cursor-pointer"
                         >
                           <ShoppingBag className="w-3.5 h-3.5" />
                           <span>Add</span>
@@ -818,7 +921,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                     required
                     value={profileName}
                     onChange={(e) => setProfileName(e.target.value)}
-                    className="w-full px-3 py-2 bg-neutral-50 border border-neutral-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 font-medium"
+                    className="w-full px-3 py-2 bg-neutral-50 border border-neutral-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500 font-medium"
                   />
                 </div>
 
@@ -840,7 +943,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                   required
                   value={profilePhone}
                   onChange={(e) => setProfilePhone(e.target.value)}
-                  className="w-full px-3 py-2 bg-neutral-50 border border-neutral-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 font-medium"
+                  className="w-full px-3 py-2 bg-neutral-50 border border-neutral-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500 font-medium"
                 />
               </div>
 
@@ -858,7 +961,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                       value={profileStreet}
                       onChange={(e) => setProfileStreet(e.target.value)}
                       placeholder="e.g. 14 Rivonia Road"
-                      className="w-full px-3 py-2 bg-neutral-50 border border-neutral-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 font-medium"
+                      className="w-full px-3 py-2 bg-neutral-50 border border-neutral-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500 font-medium"
                     />
                   </div>
 
@@ -870,7 +973,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                         value={profileSuburb}
                         onChange={(e) => setProfileSuburb(e.target.value)}
                         placeholder="e.g. Sandhurst"
-                        className="w-full px-3 py-2 bg-neutral-50 border border-neutral-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 font-medium"
+                        className="w-full px-3 py-2 bg-neutral-50 border border-neutral-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500 font-medium"
                       />
                     </div>
 
@@ -882,7 +985,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                         value={profileCity}
                         onChange={(e) => setProfileCity(e.target.value)}
                         placeholder="e.g. Johannesburg"
-                        className="w-full px-3 py-2 bg-neutral-50 border border-neutral-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 font-medium"
+                        className="w-full px-3 py-2 bg-neutral-50 border border-neutral-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500 font-medium"
                       />
                     </div>
                   </div>
@@ -893,7 +996,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                       <select
                         value={profileProvince}
                         onChange={(e) => setProfileProvince(e.target.value)}
-                        className="w-full px-3 py-2 bg-neutral-50 border border-neutral-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 font-medium"
+                        className="w-full px-3 py-2 bg-neutral-50 border border-neutral-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500 font-medium"
                       >
                         <option value="Gauteng">Gauteng</option>
                         <option value="Western Cape">Western Cape</option>
@@ -915,7 +1018,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                         value={profilePostal}
                         onChange={(e) => setProfilePostal(e.target.value)}
                         placeholder="e.g. 2196"
-                        className="w-full px-3 py-2 bg-neutral-50 border border-neutral-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 font-medium"
+                        className="w-full px-3 py-2 bg-neutral-50 border border-neutral-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500 font-medium"
                       />
                     </div>
                   </div>
@@ -927,7 +1030,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                       value={profileNotes}
                       onChange={(e) => setProfileNotes(e.target.value)}
                       placeholder="e.g. Security gate buzzer #42 or call upon arrival"
-                      className="w-full px-3 py-2 bg-neutral-50 border border-neutral-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 font-medium"
+                      className="w-full px-3 py-2 bg-neutral-50 border border-neutral-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500 font-medium"
                     />
                   </div>
                 </div>
@@ -937,12 +1040,266 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                 <button
                   type="submit"
                   disabled={isSavingProfile}
-                  className="px-6 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl shadow-md transition-all cursor-pointer disabled:opacity-50"
+                  className="px-6 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl shadow-md transition-all cursor-pointer disabled:opacity-50"
                 >
                   {isSavingProfile ? 'Saving...' : 'Save Profile & Address'}
                 </button>
               </div>
             </form>
+
+            {/* POPIA Privacy & Account Security Controls */}
+            <div className="bg-white rounded-2xl border border-neutral-200 p-6 shadow-sm space-y-6">
+              <div className="flex items-center gap-3 pb-3 border-b border-neutral-100">
+                <div className="w-10 h-10 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-neutral-900">POPIA Privacy &amp; Cryptographic Security</h3>
+                  <p className="text-xs text-neutral-500">Protection of Personal Information Act (Act 4 of 2013) &amp; Account Protection</p>
+                </div>
+              </div>
+
+              {popiaMessage && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>{popiaMessage}</span>
+                </div>
+              )}
+
+              {/* Security Badges */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200/60">
+                  <div className="flex items-center gap-2 text-orange-600 font-bold text-xs mb-1">
+                    <Lock className="w-3.5 h-3.5" />
+                    <span>Password Security</span>
+                  </div>
+                  <p className="text-[11px] text-neutral-600">Bcrypt Salted &amp; Hashed (Cost Factor 10) · Never stored in plaintext.</p>
+                </div>
+
+                <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200/60">
+                  <div className="flex items-center gap-2 text-orange-600 font-bold text-xs mb-1">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span>Edge Hardening</span>
+                  </div>
+                  <p className="text-[11px] text-neutral-600">OWASP Helmet, HSTS, X-Frame protection &amp; IP rate-limiting enforced.</p>
+                </div>
+
+                <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200/60">
+                  <div className="flex items-center gap-2 text-orange-600 font-bold text-xs mb-1">
+                    <CreditCard className="w-3.5 h-3.5" />
+                    <span>PCI DSS Level 1</span>
+                  </div>
+                  <p className="text-[11px] text-neutral-600">Offloaded to PayFast &amp; Paystack · Card data never hits Mevo servers.</p>
+                </div>
+              </div>
+
+              {/* POPIA Subject Access Rights */}
+              <div className="pt-2 border-t border-neutral-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                  <h4 className="font-bold text-xs text-neutral-800">Your Data Subject Rights (Section 14 &amp; 23)</h4>
+                  <p className="text-xs text-neutral-500 mt-0.5">
+                    Download an official JSON copy of all personal identifiable information (PII) and purchase records, or exercise your right to be forgotten.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleExportData}
+                    disabled={isExportingData}
+                    className="px-3.5 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <Download className="w-3.5 h-3.5 text-orange-600" />
+                    <span>{isExportingData ? 'Generating...' : 'Export Data Archive'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleDeleteAccount}
+                    disabled={isDeletingAccount}
+                    className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                    <span>{isDeletingAccount ? 'Purging...' : 'Delete Account (POPIA)'}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 6: PRICE DROP ALERTS */}
+        {activeTab === 'alerts' && (
+          <div className="space-y-6">
+            <div className="bg-white p-6 rounded-2xl border border-neutral-200 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center">
+                    <Bell className="w-4 h-4" />
+                  </div>
+                  <h2 className="text-lg font-black text-neutral-900">Your Price Drop Subscriptions</h2>
+                </div>
+                <p className="text-xs text-neutral-500 mt-1 max-w-xl">
+                  Automated notifications sent to <strong className="text-neutral-700">{customer.email}</strong> the second tracked Sandton Depot items drop to or below your threshold.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={loadPriceAlerts}
+                  disabled={isLoadingAlerts}
+                  className="px-3.5 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isLoadingAlerts ? 'animate-spin text-orange-600' : ''}`} />
+                  <span>Refresh</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={onBackToStore}
+                  className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Track More Tech
+                </button>
+              </div>
+            </div>
+
+            {priceAlerts.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-neutral-200 p-12 text-center space-y-4">
+                <div className="w-16 h-16 rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center mx-auto">
+                  <TrendingDown className="w-8 h-8" />
+                </div>
+                <div className="max-w-sm mx-auto">
+                  <h3 className="text-base font-bold text-neutral-900">No active price drop alerts</h3>
+                  <p className="text-xs text-neutral-500 mt-1">
+                    When you see an item you love in our store, click "Notify Me When Price Drops" to get instant alerts the second the price drops!
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={onBackToStore}
+                  className="px-6 py-2.5 bg-neutral-900 hover:bg-orange-600 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer"
+                >
+                  Explore Hardware Catalogue
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {priceAlerts.map((alert) => {
+                  const matchingProduct = allProducts.find((p) => p.id === alert.productId);
+                  const currentPrice = matchingProduct
+                    ? matchingProduct.promotionalPriceCents ?? matchingProduct.priceCents
+                    : alert.initialPriceCents;
+
+                  return (
+                    <div
+                      key={alert.id}
+                      className="bg-white rounded-2xl border border-neutral-200 shadow-xs hover:shadow-md transition-shadow p-5 flex flex-col justify-between space-y-4"
+                    >
+                      <div className="space-y-3">
+                        {/* Status Badge & Strategy */}
+                        <div className="flex items-center justify-between text-xs">
+                          {alert.status === 'ACTIVE' && (
+                            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                              Active Tracker
+                            </span>
+                          )}
+                          {alert.status === 'TRIGGERED' && (
+                            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">
+                              <Sparkles className="w-3 h-3 text-amber-600" />
+                              Triggered &amp; Dispatched
+                            </span>
+                          )}
+                          {alert.status === 'CANCELLED' && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-neutral-500 bg-neutral-100 px-2.5 py-1 rounded-full">
+                              Cancelled
+                            </span>
+                          )}
+
+                          <span className="text-[10px] uppercase font-mono text-neutral-400">
+                            {alert.targetType === '10_percent'
+                              ? '10% Drop'
+                              : alert.targetType === '20_percent'
+                              ? '20% Drop'
+                              : alert.targetType === 'custom'
+                              ? 'Custom Target'
+                              : 'Any Drop'}
+                          </span>
+                        </div>
+
+                        {/* Product Info */}
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={alert.productImage || 'https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?w=150'}
+                            alt={alert.productName}
+                            className="w-16 h-16 rounded-xl object-cover border border-neutral-200 shrink-0 bg-neutral-50"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <h4
+                              onClick={() => {
+                                if (matchingProduct) onSelectProduct(matchingProduct);
+                              }}
+                              className="text-sm font-bold text-neutral-900 truncate hover:text-orange-600 cursor-pointer"
+                            >
+                              {alert.productName}
+                            </h4>
+                            <p className="text-[11px] text-neutral-400 font-mono">
+                              Subscribed at: {formatZAR(alert.initialPriceCents)}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Price Target Card */}
+                        <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200 space-y-1.5 text-xs">
+                          <div className="flex justify-between items-center">
+                            <span className="text-neutral-500">Alert Target:</span>
+                            <span className="font-mono font-bold text-orange-600">
+                              ≤ {formatZAR(alert.targetPriceCents)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center pt-1 border-t border-neutral-200/60">
+                            <span className="text-neutral-500">Current Store Price:</span>
+                            <span className="font-mono font-bold text-neutral-900">
+                              {formatZAR(currentPrice)}
+                            </span>
+                          </div>
+                          {alert.status === 'TRIGGERED' && alert.lastNotifiedPriceCents && (
+                            <div className="flex justify-between items-center pt-1 border-t border-neutral-200/60 text-emerald-700 font-semibold">
+                              <span>Alert Triggered At:</span>
+                              <span className="font-mono">{formatZAR(alert.lastNotifiedPriceCents)}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex items-center gap-2 pt-2 border-t border-neutral-100">
+                        {matchingProduct && (
+                          <button
+                            type="button"
+                            onClick={() => onSelectProduct(matchingProduct)}
+                            className="flex-1 py-2 px-3 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-xs font-bold rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            <span>View Specs</span>
+                          </button>
+                        )}
+                        {alert.status === 'ACTIVE' && (
+                          <button
+                            type="button"
+                            onClick={() => handleCancelAlert(alert.id)}
+                            className="py-2 px-3 text-xs font-bold text-neutral-500 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors cursor-pointer"
+                          >
+                            Cancel Alert
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
@@ -954,7 +1311,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-neutral-200 space-y-4 text-xs">
             <div className="flex items-center justify-between pb-3 border-b border-neutral-200">
               <div className="flex items-center gap-2">
-                <FileText className="w-5 h-5 text-purple-600" />
+                <FileText className="w-5 h-5 text-orange-600" />
                 <h3 className="font-bold text-sm text-neutral-900">Official South African Tax Invoice</h3>
               </div>
               <button

@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { Product } from '../types';
 import { formatZAR } from '../utils/calculations';
 import { useCart } from '../context/CartContext';
-import { ShoppingBag, Eye, CheckCircle2, AlertTriangle, Heart, Share2 } from 'lucide-react';
+import { useComparison } from '../context/ComparisonContext';
+import { ShoppingBag, Eye, CheckCircle2, AlertTriangle, Heart, Share2, Scale } from 'lucide-react';
 import { ShareModal } from './ShareModal';
+import { ProductOptionsModal } from './ProductOptionsModal';
 
 interface ProductCardProps {
   product: Product;
@@ -11,8 +13,10 @@ interface ProductCardProps {
 }
 
 export const ProductCard: React.FC<ProductCardProps> = ({ product, onSelect }) => {
-  const { addItem, isInWishlist, toggleWishlist } = useCart();
+  const { isInWishlist, toggleWishlist } = useCart();
+  const { isInCompare, toggleCompare } = useComparison();
   const [isShareOpen, setIsShareOpen] = useState(false);
+  const [isOptionsOpen, setIsOptionsOpen] = useState(false);
   const availableStock = product.onHandQuantity - product.reservedQuantity;
   const isOutOfStock = availableStock <= 0;
   const isLowStock = availableStock > 0 && availableStock <= product.lowStockThreshold;
@@ -20,9 +24,10 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onSelect }) =
   const currentPrice = product.promotionalPriceCents || product.priceCents;
   const hasDiscount = Boolean(product.promotionalPriceCents && product.promotionalPriceCents < product.priceCents);
   const isSaved = isInWishlist(product.id);
+  const isCompared = isInCompare(product.id);
 
   return (
-    <div className="group relative bg-white rounded-xl border border-neutral-200 hover:border-purple-400 overflow-hidden flex flex-col transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_4px_20px_rgba(168,85,247,0.2)]">
+    <div className="group relative bg-white rounded-xl border border-neutral-200 hover:border-orange-400 overflow-hidden flex flex-col transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_4px_20px_rgba(234, 88, 12,0.2)]">
       {/* Product Image Area */}
       <div
         onClick={() => onSelect(product)}
@@ -41,20 +46,57 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onSelect }) =
 
         {/* Status indicators */}
         <div className="absolute top-3 left-3 flex flex-col gap-1.5 z-10 pointer-events-none">
-          {product.isNewArrival && (
-            <span className="text-[11px] font-bold text-purple-700 bg-purple-50/90 backdrop-blur-sm px-2 py-0.5 rounded border border-purple-200">
+          {product.isPinnedToTop && (
+            <span className="text-[10px] font-black uppercase text-orange-700 bg-orange-100/95 backdrop-blur-sm px-2 py-0.5 rounded border border-orange-300 shadow-xs">
+              ★ Featured
+            </span>
+          )}
+          {product.placementSlot === 'deals_of_the_day' && (
+            <span className="text-[10px] font-black uppercase text-amber-800 bg-amber-100/95 backdrop-blur-sm px-2 py-0.5 rounded border border-amber-300 shadow-xs">
+              ⚡ Daily Deal
+            </span>
+          )}
+          {product.placementSlot === 'trending_now' && (
+            <span className="text-[10px] font-black uppercase text-rose-800 bg-rose-100/95 backdrop-blur-sm px-2 py-0.5 rounded border border-rose-300 shadow-xs">
+              🔥 Trending
+            </span>
+          )}
+          {product.isNewArrival && !product.isPinnedToTop && (
+            <span className="text-[11px] font-bold text-orange-700 bg-orange-50/90 backdrop-blur-sm px-2 py-0.5 rounded border border-orange-200">
               NEW
             </span>
           )}
-          {hasDiscount && (
+          {hasDiscount && product.placementSlot !== 'deals_of_the_day' && (
             <span className="text-[11px] font-bold text-amber-700 bg-amber-50/90 backdrop-blur-sm px-2 py-0.5 rounded border border-amber-200">
               SPECIAL
             </span>
           )}
         </div>
 
-        {/* Top-Right Card Actions: Share & Heart Wishlist */}
+        {/* Top-Right Card Actions: Compare, Share & Heart Wishlist */}
         <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5">
+          {/* Compare Toggle Button */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleCompare(product);
+            }}
+            aria-label={isCompared ? `Remove ${product.name} from comparison` : `Compare ${product.name}`}
+            title={isCompared ? 'Remove from Compare' : 'Add to Compare (max 3)'}
+            className={`p-2 rounded-full transition-all duration-200 shadow-sm cursor-pointer ${
+              isCompared
+                ? 'bg-orange-600 text-white ring-2 ring-orange-300 shadow-md'
+                : 'bg-white/85 hover:bg-white text-neutral-500 hover:text-orange-600 backdrop-blur-xs'
+            }`}
+          >
+            <Scale
+              className={`w-4 h-4 transition-transform duration-200 ${
+                isCompared ? 'scale-110' : 'hover:scale-115'
+              }`}
+            />
+          </button>
+
           <button
             type="button"
             onClick={(e) => {
@@ -63,7 +105,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onSelect }) =
             }}
             aria-label={`Share ${product.name}`}
             title="Share item"
-            className="p-2 rounded-full transition-all duration-200 shadow-sm cursor-pointer bg-white/85 hover:bg-white text-neutral-500 hover:text-purple-600 backdrop-blur-xs"
+            className="p-2 rounded-full transition-all duration-200 shadow-sm cursor-pointer bg-white/85 hover:bg-white text-neutral-500 hover:text-orange-600 backdrop-blur-xs"
           >
             <Share2 className="w-4 h-4" />
           </button>
@@ -113,7 +155,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onSelect }) =
           {/* Product Title */}
           <h3
             onClick={() => onSelect(product)}
-            className="text-sm font-bold text-neutral-900 line-clamp-2 hover:text-purple-600 transition-colors cursor-pointer mb-1.5"
+            className="text-sm font-bold text-neutral-900 line-clamp-2 hover:text-orange-600 transition-colors cursor-pointer mb-1.5"
             title={product.name}
           >
             {product.name}
@@ -161,22 +203,25 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onSelect }) =
           <div className="flex items-center gap-2">
             <button
               onClick={() => onSelect(product)}
-              className="flex-1 py-2 px-3 text-xs font-semibold text-neutral-700 bg-neutral-100 hover:bg-neutral-200 rounded-lg transition-colors text-center"
+              className="flex-1 py-2 px-3 text-xs font-semibold text-neutral-700 bg-neutral-100 hover:bg-neutral-200 rounded-lg transition-colors text-center cursor-pointer"
             >
               Specs
             </button>
             <button
               disabled={isOutOfStock}
-              onClick={() => addItem(product)}
-              aria-label={`Add ${product.name} to cart`}
-              className={`py-2 px-3 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-colors ${
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsOptionsOpen(true);
+              }}
+              aria-label={`Buy ${product.name} - Choose options`}
+              className={`py-2 px-3.5 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                 isOutOfStock
                   ? 'bg-neutral-200 text-neutral-400 cursor-not-allowed'
-                  : 'bg-neutral-900 text-white hover:bg-purple-600 shadow-sm'
+                  : 'bg-neutral-900 text-white hover:bg-orange-600 shadow-sm active:scale-95 group-hover:bg-orange-600'
               }`}
             >
               <ShoppingBag className="w-3.5 h-3.5" />
-              <span>Add</span>
+              <span>Buy</span>
             </button>
           </div>
         </div>
@@ -187,6 +232,14 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onSelect }) =
         product={product}
         isOpen={isShareOpen}
         onClose={() => setIsShareOpen(false)}
+      />
+
+      {/* Variation & Options Quick-Buy Modal */}
+      <ProductOptionsModal
+        product={product}
+        isOpen={isOptionsOpen}
+        onClose={() => setIsOptionsOpen(false)}
+        onSelectProductDetails={onSelect}
       />
     </div>
   );

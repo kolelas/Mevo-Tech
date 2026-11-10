@@ -61,7 +61,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
         {/* Header */}
         <div className="p-5 border-b border-neutral-200 flex items-center justify-between bg-neutral-50">
           <div className="flex items-center gap-2">
-            <Share2 className="w-4 h-4 text-purple-600" />
+            <Share2 className="w-4 h-4 text-orange-600" />
             <h3 className="text-base font-bold text-neutral-900">Share Hardware Item</h3>
           </div>
           <button
@@ -74,12 +74,12 @@ export const ShareModal: React.FC<ShareModalProps> = ({
 
         {/* Product Card Preview (if sharing a product) */}
         {product && (
-          <div className="p-4 bg-purple-50/50 border-b border-purple-100 flex items-center gap-3">
+          <div className="p-4 bg-orange-50/50 border-b border-orange-100 flex items-center gap-3">
             <div className="w-14 h-14 rounded-xl overflow-hidden bg-white border border-neutral-200 shrink-0">
               <img src={product.primaryImage} alt="" className="w-full h-full object-cover" />
             </div>
             <div className="min-w-0 flex-1">
-              <span className="text-[10px] font-bold text-purple-700 uppercase tracking-wider block">
+              <span className="text-[10px] font-bold text-orange-700 uppercase tracking-wider block">
                 {product.brand}
               </span>
               <p className="text-xs font-bold text-neutral-900 truncate">{product.name}</p>
@@ -107,7 +107,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
                 className={`px-4 py-2.5 rounded-xl font-bold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
                   copied
                     ? 'bg-emerald-600 text-white'
-                    : 'bg-purple-600 hover:bg-purple-700 text-white shadow-sm'
+                    : 'bg-orange-600 hover:bg-orange-700 text-white shadow-sm'
                 }`}
               >
                 {copied ? (
@@ -163,7 +163,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
                 href={mailUrl}
                 className="p-3 rounded-xl border border-neutral-200 bg-neutral-50 hover:bg-neutral-100 text-neutral-900 font-bold flex items-center gap-2 transition-colors cursor-pointer"
               >
-                <Mail className="w-4 h-4 text-purple-600" />
+                <Mail className="w-4 h-4 text-orange-600" />
                 <span>Email Friend</span>
               </a>
             </div>

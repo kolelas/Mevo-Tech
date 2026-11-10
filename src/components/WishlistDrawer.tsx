@@ -89,7 +89,7 @@ export const WishlistDrawer: React.FC<WishlistDrawerProps> = ({
                     setIsWishlistOpen(false);
                     if (onExploreProducts) onExploreProducts();
                   }}
-                  className="py-2.5 px-5 bg-neutral-900 text-white rounded-xl text-xs font-bold hover:bg-purple-600 transition-colors shadow-sm"
+                  className="py-2.5 px-5 bg-neutral-900 text-white rounded-xl text-xs font-bold hover:bg-orange-600 transition-colors shadow-sm"
                 >
                   Explore Hardware Catalog
                 </button>
@@ -155,7 +155,7 @@ export const WishlistDrawer: React.FC<WishlistDrawerProps> = ({
                                   setIsWishlistOpen(false);
                                 }
                               }}
-                              className="text-xs font-bold text-neutral-900 truncate hover:text-purple-600 transition-colors cursor-pointer mt-0.5"
+                              className="text-xs font-bold text-neutral-900 truncate hover:text-orange-600 transition-colors cursor-pointer mt-0.5"
                             >
                               {product.name}
                             </h4>
@@ -199,7 +199,7 @@ export const WishlistDrawer: React.FC<WishlistDrawerProps> = ({
                               className={`py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors ${
                                 isOutOfStock
                                   ? 'bg-neutral-100 text-neutral-400 cursor-not-allowed'
-                                  : 'bg-neutral-900 hover:bg-purple-600 text-white shadow-xs'
+                                  : 'bg-neutral-900 hover:bg-orange-600 text-white shadow-xs'
                               }`}
                             >
                               <ShoppingBag className="w-3.5 h-3.5" />
@@ -220,7 +220,7 @@ export const WishlistDrawer: React.FC<WishlistDrawerProps> = ({
             <div className="p-5 border-t border-neutral-200 bg-neutral-50 space-y-2.5">
               <button
                 onClick={handleMoveAllToCart}
-                className="w-full py-3 px-4 bg-neutral-900 hover:bg-purple-600 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full py-3 px-4 bg-neutral-900 hover:bg-orange-600 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
               >
                 <span>Move In-Stock Items to Cart</span>
                 <ArrowRight className="w-4 h-4" />

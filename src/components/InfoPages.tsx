@@ -11,7 +11,7 @@ export const InfoPages: React.FC<InfoPagesProps> = ({ page, onBackToStore }) => 
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-12 animate-in fade-in">
       <button
         onClick={onBackToStore}
-        className="text-xs font-semibold text-purple-600 hover:text-purple-800 mb-6 flex items-center gap-1"
+        className="text-xs font-semibold text-orange-600 hover:text-orange-800 mb-6 flex items-center gap-1"
       >
         ← Back to Storefront
       </button>
@@ -20,7 +20,7 @@ export const InfoPages: React.FC<InfoPagesProps> = ({ page, onBackToStore }) => 
       {page === 'info_shipping' && (
         <div className="bg-white rounded-2xl border border-neutral-200 p-8 shadow-sm space-y-6">
           <div className="flex items-center gap-3 pb-4 border-b border-neutral-200">
-            <div className="p-3 bg-purple-50 text-purple-600 rounded-xl">
+            <div className="p-3 bg-orange-50 text-orange-600 rounded-xl">
               <Truck className="w-6 h-6" />
             </div>
             <div>
@@ -91,7 +91,7 @@ export const InfoPages: React.FC<InfoPagesProps> = ({ page, onBackToStore }) => 
       {page === 'info_returns' && (
         <div className="bg-white rounded-2xl border border-neutral-200 p-8 shadow-sm space-y-6">
           <div className="flex items-center gap-3 pb-4 border-b border-neutral-200">
-            <div className="p-3 bg-purple-50 text-purple-600 rounded-xl">
+            <div className="p-3 bg-orange-50 text-orange-600 rounded-xl">
               <FileText className="w-6 h-6" />
             </div>
             <div>
@@ -162,21 +162,21 @@ export const InfoPages: React.FC<InfoPagesProps> = ({ page, onBackToStore }) => 
           <h1 className="text-xl font-bold text-neutral-900">Contact Mevo Tech Specialists</h1>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
             <div className="p-4 rounded-xl bg-neutral-50 border border-neutral-200">
-              <Phone className="w-5 h-5 text-purple-600 mb-2" />
+              <Phone className="w-5 h-5 text-orange-600 mb-2" />
               <h3 className="font-bold text-neutral-900">Direct Telephone</h3>
               <p className="text-neutral-500 mt-1">+27 11 884 9200</p>
               <p className="text-[11px] text-neutral-400 mt-0.5">Mon–Fri: 08:00 – 17:00 SAST</p>
             </div>
 
             <div className="p-4 rounded-xl bg-neutral-50 border border-neutral-200">
-              <Mail className="w-5 h-5 text-purple-600 mb-2" />
+              <Mail className="w-5 h-5 text-orange-600 mb-2" />
               <h3 className="font-bold text-neutral-900">Email Inquiries</h3>
               <p className="text-neutral-500 mt-1">support@mevotech.co.za</p>
               <p className="text-[11px] text-neutral-400 mt-0.5">Average response under 2 hours</p>
             </div>
 
             <div className="p-4 rounded-xl bg-neutral-50 border border-neutral-200">
-              <MapPin className="w-5 h-5 text-purple-600 mb-2" />
+              <MapPin className="w-5 h-5 text-orange-600 mb-2" />
               <h3 className="font-bold text-neutral-900">Sandton Depot</h3>
               <p className="text-neutral-500 mt-1">5th Floor, Sandton City Tower</p>
               <p className="text-[11px] text-neutral-400 mt-0.5">Johannesburg, 2196</p>

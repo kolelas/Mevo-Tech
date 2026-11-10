@@ -52,6 +52,13 @@ export interface ProductSpecification {
   value: string;
 }
 
+export type ProductPlacementSlot =
+  | 'hero_spotlight'
+  | 'deals_of_the_day'
+  | 'trending_now'
+  | 'category_lead'
+  | 'standard';
+
 export interface Product {
   id: string;
   slug: string;
@@ -75,6 +82,9 @@ export interface Product {
   isActive: boolean;
   isFeatured?: boolean;
   isNewArrival?: boolean;
+  placementSlot?: ProductPlacementSlot;
+  placementPriority?: number; // 1 = highest priority in the designated zone
+  isPinnedToTop?: boolean;
   warrantyPeriodMonths: number;
   createdAt: string;
   updatedAt: string;
@@ -208,11 +218,18 @@ export interface Order {
 export interface CouponDiscount {
   code: string;
   type: 'PERCENTAGE' | 'FIXED_CENTS';
-  value: number; // percentage (e.g. 10 for 10%) or cents
+  value: number; // percentage (e.g. 10 for 10%) or cents (e.g. 15000 for R150)
   minOrderCents: number;
   description: string;
   isActive: boolean;
+  createdAt?: string;
+  expiresAt?: string;
+  usageCount?: number;
+  maxUses?: number;
 }
+
+export type ActivitySeverity = 'info' | 'warning' | 'critical';
+export type ActivityCategory = 'auth' | 'payment_failure' | 'account_management' | 'security' | 'inventory' | 'system';
 
 export interface AuditLogEntry {
   id: string;
@@ -222,6 +239,10 @@ export interface AuditLogEntry {
   targetType: string;
   targetId: string;
   details: string;
+  severity?: ActivitySeverity;
+  category?: ActivityCategory;
+  ipAddress?: string;
+  metadata?: Record<string, any>;
   timestamp: string;
 }
 
@@ -266,13 +287,46 @@ export interface ProductReview {
   createdAt: string;
 }
 
+export type CustomerAccountStatus = 'active' | 'restricted' | 'blocked';
+export type CustomerAuthProvider = 'local' | 'google' | 'facebook';
+
 export interface CustomerAccount {
   id: string;
   email: string;
   name: string;
   phone: string;
   role: 'customer';
+  avatar?: string;
+  authProvider?: CustomerAuthProvider;
+  status: CustomerAccountStatus; // 'active' | 'restricted' (no checkout) | 'blocked' (login suspended)
+  restrictionReason?: string;
+  statusUpdatedAt?: string;
+  lastLoginAt?: string;
   defaultAddress?: ShippingAddress;
   favourites: string[];
+  orderCount?: number;
+  totalSpendCents?: number;
+  emailVerified?: boolean;
+  emailVerificationCode?: string;
   createdAt: string;
 }
+
+export type PriceAlertTargetType = 'any' | '10_percent' | '20_percent' | 'custom';
+
+export interface PriceAlert {
+  id: string;
+  productId: string;
+  productName: string;
+  productSlug: string;
+  productImage: string;
+  email: string;
+  customerId?: string;
+  initialPriceCents: number;
+  targetPriceCents: number;
+  targetType: PriceAlertTargetType;
+  status: 'ACTIVE' | 'TRIGGERED' | 'CANCELLED';
+  createdAt: string;
+  triggeredAt?: string;
+  lastNotifiedPriceCents?: number;
+}
+

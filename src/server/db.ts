@@ -2,10 +2,13 @@ import {
   AuditLogEntry,
   CouponDiscount,
   CustomerAccount,
+  CustomerAccountStatus,
+  CustomerAuthProvider,
   Order,
   OrderStatus,
   PaymentAttempt,
   Product,
+  ProductPlacementSlot,
   ProductReview,
   PromotionalBanner,
   ShippingMethod,
@@ -13,18 +16,25 @@ import {
   StockReservation,
   StoreSettings,
   User,
+  PriceAlert,
+  PriceAlertTargetType,
 } from '../types';
 import { canTransitionOrderStatus } from '../utils/calculations';
+import { hashPassword, verifyPassword, signCustomerToken, sanitizeCustomerProfileUpdates } from './security';
+import { computeSalesAnalytics, SalesAnalyticsSummary } from '../utils/salesAnalytics';
+import { calculateTargetPriceCents, shouldTriggerPriceAlert, validatePriceAlertEmail } from '../utils/priceAlerts';
 
-// Global in-memory transactional database state with automatic reservation expiry check
+// Modern persistent transactional database state with automatic reservation expiry check
 class Database {
   private products: Map<string, Product> = new Map();
   private orders: Map<string, Order> = new Map();
   private reservations: Map<string, StockReservation> = new Map();
   private stockMovements: StockMovement[] = [];
   private auditLogs: AuditLogEntry[] = [];
+  private priceAlerts: Map<string, PriceAlert> = new Map();
+
   private users: Map<string, User> = new Map();
-  private customers: Map<string, { account: CustomerAccount; password: string }> = new Map();
+  private customers: Map<string, { account: CustomerAccount; passwordHash: string; verificationCode?: string; verificationExpires?: string }> = new Map();
   private reviews: Map<string, ProductReview[]> = new Map();
   private coupons: Map<string, CouponDiscount> = new Map();
   private promotionalBanners: Map<string, PromotionalBanner> = new Map();
@@ -71,9 +81,13 @@ class Database {
     this.seedCustomers();
     this.seedReviews();
     this.seedCustomerOrders();
+    this.seedSystemActivityLogs();
 
-    // Start background reservation expiration cleanup every 30 seconds
-    setInterval(() => this.reapExpiredReservations(), 30000);
+    // Start background reservation expiration cleanup every 30 seconds (unref'd to allow clean exit)
+    const cleanupInterval = setInterval(() => this.reapExpiredReservations(), 30000);
+    if (typeof cleanupInterval === 'object' && cleanupInterval !== null && 'unref' in cleanupInterval) {
+      cleanupInterval.unref();
+    }
   }
 
   private seedUsers() {
@@ -116,6 +130,10 @@ class Database {
       name: 'Blacque Beat',
       phone: '+27 83 456 7890',
       role: 'customer',
+      authProvider: 'google',
+      status: 'active',
+      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+      lastLoginAt: new Date().toISOString(),
       favourites: ['prod_lumina_34_oled', 'prod_aeon_elite_anc'],
       defaultAddress: {
         fullName: 'Blacque Beat',
@@ -128,12 +146,13 @@ class Database {
         postalCode: '2196',
         deliveryNotes: 'Depot courier dispatch · Ring security buzzer at gate',
       },
+      emailVerified: true,
       createdAt: '2026-01-15T08:00:00Z',
     };
 
     this.customers.set(defaultCustomer.id, {
       account: defaultCustomer,
-      password: 'Password@2026',
+      passwordHash: hashPassword('Password@2026'),
     });
 
     const shopperDemo: CustomerAccount = {
@@ -142,6 +161,9 @@ class Database {
       name: 'Valued SA Shopper',
       phone: '+27 82 555 0100',
       role: 'customer',
+      authProvider: 'local',
+      status: 'active',
+      lastLoginAt: '2026-10-25T11:20:00Z',
       favourites: ['prod_studiobook_pro_16'],
       defaultAddress: {
         fullName: 'Valued SA Shopper',
@@ -153,12 +175,65 @@ class Database {
         province: 'Gauteng',
         postalCode: '2196',
       },
+      emailVerified: true,
       createdAt: '2026-02-01T08:00:00Z',
     };
 
     this.customers.set(shopperDemo.id, {
       account: shopperDemo,
-      password: 'Password@2026',
+      passwordHash: hashPassword('Password@2026'),
+    });
+
+    // Restricted Account: can login and browse, but restricted from placing new checkout orders
+    const restrictedCustomer: CustomerAccount = {
+      id: 'cust_restricted_demo',
+      email: 'sipho.dlm@facebook-login.co.za',
+      name: 'Sipho Dlamini',
+      phone: '+27 82 999 1122',
+      role: 'customer',
+      authProvider: 'facebook',
+      status: 'restricted',
+      restrictionReason: 'Temporary security verification required: 2 consecutive high-value chargeback inquiries from bank',
+      statusUpdatedAt: '2026-10-28T14:00:00Z',
+      lastLoginAt: '2026-10-29T09:15:00Z',
+      favourites: ['prod_lumina_34_oled'],
+      defaultAddress: {
+        fullName: 'Sipho Dlamini',
+        email: 'sipho.dlm@facebook-login.co.za',
+        phone: '+27 82 999 1122',
+        streetAddress: '45 Kloof Street',
+        suburb: 'Gardens',
+        city: 'Cape Town',
+        province: 'Western Cape',
+        postalCode: '8001',
+      },
+      createdAt: '2026-02-10T10:00:00Z',
+    };
+
+    this.customers.set(restrictedCustomer.id, {
+      account: restrictedCustomer,
+      passwordHash: hashPassword('Password@2026'),
+    });
+
+    // Blocked Account: completely suspended from accessing the platform / login blocked
+    const blockedCustomer: CustomerAccount = {
+      id: 'cust_blocked_bot',
+      email: 'fraud.origin@card-tester.net',
+      name: 'Fraud Suspicion User',
+      phone: '+27 80 000 9999',
+      role: 'customer',
+      authProvider: 'local',
+      status: 'blocked',
+      restrictionReason: 'Automated card-testing script detected by rate limiting heuristics (15 rapid failed transactions)',
+      statusUpdatedAt: '2026-10-30T02:15:00Z',
+      lastLoginAt: '2026-10-30T02:14:00Z',
+      favourites: [],
+      createdAt: '2026-03-01T02:15:00Z',
+    };
+
+    this.customers.set(blockedCustomer.id, {
+      account: blockedCustomer,
+      passwordHash: hashPassword('Password@2026'),
     });
   }
 
@@ -391,20 +466,44 @@ class Database {
   private seedCoupons() {
     const initialCoupons: CouponDiscount[] = [
       {
+        code: 'MEVO150',
+        type: 'FIXED_CENTS',
+        value: 15000, // R150.00 off
+        minOrderCents: 150000, // R1,500 minimum
+        description: 'R150 off orders over R1,500 across entire store',
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        usageCount: 42,
+      },
+      {
         code: 'MEVOSPRING',
         type: 'PERCENTAGE',
         value: 10,
         minOrderCents: 100000, // R1,000 minimum
         description: '10% discount on tech orders over R1,000.00',
         isActive: true,
+        createdAt: new Date().toISOString(),
+        usageCount: 89,
       },
       {
         code: 'FIRSTTECH',
         type: 'FIXED_CENTS',
         value: 25000, // R250.00 off
         minOrderCents: 200000, // R2,000 minimum
-        description: 'R250.00 off orders over R2,000.00',
+        description: 'R250.00 off first tech orders over R2,000.00',
         isActive: true,
+        createdAt: new Date().toISOString(),
+        usageCount: 31,
+      },
+      {
+        code: 'MEVOSUPER',
+        type: 'PERCENTAGE',
+        value: 15,
+        minOrderCents: 350000, // R3,500 minimum
+        description: '15% off premium workstation hardware and rigs',
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        usageCount: 18,
       },
     ];
 
@@ -1331,18 +1430,281 @@ class Database {
     return this.coupons.get(code.toUpperCase());
   }
 
-  // ---- Audit Trail ----
-
-  private recordAuditLog(entry: Omit<AuditLogEntry, 'id' | 'timestamp'>): void {
-    this.auditLogs.unshift({
-      ...entry,
-      id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      timestamp: new Date().toISOString(),
+  getAllCoupons(): CouponDiscount[] {
+    return Array.from(this.coupons.values()).sort((a, b) => {
+      // Sort active first, then newest
+      if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
+      return (b.createdAt || '').localeCompare(a.createdAt || '');
     });
   }
 
+  getActiveCoupons(): CouponDiscount[] {
+    return Array.from(this.coupons.values()).filter((c) => c.isActive);
+  }
+
+  createCoupon(coupon: CouponDiscount): CouponDiscount {
+    const code = coupon.code.trim().toUpperCase();
+    const existing = this.coupons.get(code);
+    const created: CouponDiscount = {
+      ...coupon,
+      code,
+      createdAt: existing?.createdAt || new Date().toISOString(),
+      usageCount: existing?.usageCount || 0,
+    };
+    this.coupons.set(code, created);
+    return created;
+  }
+
+  toggleCouponStatus(code: string): CouponDiscount | undefined {
+    const coupon = this.coupons.get(code.toUpperCase());
+    if (!coupon) return undefined;
+    coupon.isActive = !coupon.isActive;
+    this.coupons.set(code.toUpperCase(), { ...coupon });
+    return coupon;
+  }
+
+  deleteCoupon(code: string): boolean {
+    return this.coupons.delete(code.toUpperCase());
+  }
+
+  // ---- System Activity & Security Audit Trail ----
+
+  public recordAuditLog(
+    entry: Omit<AuditLogEntry, 'id' | 'timestamp'> & { timestamp?: string }
+  ): AuditLogEntry {
+    let category = entry.category;
+    let severity = entry.severity || 'info';
+
+    if (!category) {
+      if (
+        entry.action.includes('LOGIN') ||
+        entry.action.includes('AUTH') ||
+        entry.action.includes('REGISTER') ||
+        entry.action.includes('SESSION')
+      ) {
+        category = 'auth';
+      } else if (
+        entry.action.includes('PAYMENT') ||
+        entry.action.includes('TRANSACTION') ||
+        entry.action.includes('SIGNATURE') ||
+        entry.action.includes('AMOUNT')
+      ) {
+        category = 'payment_failure';
+      } else if (
+        entry.action.includes('STATUS') ||
+        entry.action.includes('CUSTOMER') ||
+        entry.action.includes('MERCHANDISING') ||
+        entry.action.includes('POLICY') ||
+        entry.action.includes('ROLE') ||
+        entry.action.includes('SETTINGS')
+      ) {
+        category = 'account_management';
+      } else {
+        category = 'system';
+      }
+    }
+
+    if (
+      entry.action.includes('FAIL') ||
+      entry.action.includes('RESTRICT') ||
+      entry.action.includes('WARNING') ||
+      entry.action.includes('DECLINED')
+    ) {
+      if (severity === 'info') severity = 'warning';
+    }
+    if (
+      entry.action.includes('BLOCK') ||
+      entry.action.includes('TAMPER') ||
+      entry.action.includes('FRAUD') ||
+      entry.action.includes('UNAUTHORIZED') ||
+      entry.action.includes('MISMATCH')
+    ) {
+      severity = 'critical';
+    }
+
+    const log: AuditLogEntry = {
+      ...entry,
+      category,
+      severity,
+      id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      timestamp: entry.timestamp || new Date().toISOString(),
+    };
+
+    this.auditLogs.unshift(log);
+    if (this.auditLogs.length > 500) {
+      this.auditLogs.pop();
+    }
+    return log;
+  }
+
   getAuditLogs(): AuditLogEntry[] {
-    return [...this.auditLogs].slice(0, 100);
+    return [...this.auditLogs].slice(0, 150);
+  }
+
+  private seedSystemActivityLogs() {
+    const pastMinutes = (m: number) => new Date(Date.now() - m * 60 * 1000).toISOString();
+    const pastHours = (h: number) => new Date(Date.now() - h * 60 * 60 * 1000).toISOString();
+
+    const initialLogs: AuditLogEntry[] = [
+      {
+        id: 'act_log_001',
+        actor: 'blacquebeat@gmail.com',
+        role: 'customer',
+        action: 'USER_SOCIAL_LOGIN_SUCCESS',
+        targetType: 'AUTH',
+        targetId: 'cust_blacquebeat',
+        category: 'auth',
+        severity: 'info',
+        ipAddress: '197.89.24.112',
+        details: 'Customer authenticated via GOOGLE single-sign-on (OAuth 2.0 PKCE handshake)',
+        timestamp: pastMinutes(14),
+      },
+      {
+        id: 'act_log_002',
+        actor: 'Paystack Gateway Webhook',
+        role: 'system',
+        action: 'PAYMENT_ATTEMPT_FAILED',
+        targetType: 'PAYMENT',
+        targetId: 'MEV-2026-78119',
+        category: 'payment_failure',
+        severity: 'warning',
+        ipAddress: '52.31.139.228',
+        details: 'Payment attempt failed for order MEV-2026-78119 on Paystack (Code: 51 - Insufficient funds on card ending 4012). Amount: R 38,999.00',
+        timestamp: pastMinutes(48),
+      },
+      {
+        id: 'act_log_003',
+        actor: 'Mevo Executive Admin',
+        role: 'owner',
+        action: 'CUSTOMER_STATUS_BLOCKED',
+        targetType: 'CUSTOMER',
+        targetId: 'cust_blocked_card_abuser',
+        category: 'account_management',
+        severity: 'critical',
+        ipAddress: '105.187.32.9',
+        details: 'Account status updated from ACTIVE to BLOCKED for fraud-flagged@suspicious.net. Policy reason: Multiple card velocity triggers and automated BIN attacks detected.',
+        timestamp: pastHours(2),
+      },
+      {
+        id: 'act_log_004',
+        actor: 'fraud-flagged@suspicious.net',
+        role: 'customer',
+        action: 'USER_LOGIN_BLOCKED',
+        targetType: 'AUTH',
+        targetId: 'cust_blocked_card_abuser',
+        category: 'auth',
+        severity: 'critical',
+        ipAddress: '185.220.101.5',
+        details: 'Suspended account attempted login via email/password. Access blocked by security filter. Contact compliance@mevotech.co.za.',
+        timestamp: pastHours(3),
+      },
+      {
+        id: 'act_log_005',
+        actor: 'PayFast Sandbox Gateway',
+        role: 'system',
+        action: 'PAYMENT_ATTEMPT_FAILED',
+        targetType: 'PAYMENT',
+        targetId: 'MEV-2026-92144',
+        category: 'payment_failure',
+        severity: 'warning',
+        ipAddress: '196.33.226.11',
+        details: 'Card 3D Secure authentication timeout after 180s. Customer abandoned Nedbank OTP screen. Order MEV-2026-92144 kept in PENDING_PAYMENT.',
+        timestamp: pastHours(5),
+      },
+      {
+        id: 'act_log_006',
+        actor: 'Mevo Executive Admin',
+        role: 'owner',
+        action: 'CUSTOMER_STATUS_RESTRICTED',
+        targetType: 'CUSTOMER',
+        targetId: 'cust_restricted_chargeback',
+        category: 'account_management',
+        severity: 'warning',
+        ipAddress: '105.187.32.9',
+        details: 'Account status updated from ACTIVE to RESTRICTED for disputed-shopper@risk.co.za. Policy reason: Pending chargeback dispute investigation and FICA verification hold.',
+        timestamp: pastHours(7),
+      },
+      {
+        id: 'act_log_007',
+        actor: 'disputed-shopper@risk.co.za',
+        role: 'customer',
+        action: 'PAYMENT_RESTRICTED_ATTEMPT',
+        targetType: 'PAYMENT',
+        targetId: 'cust_restricted_chargeback',
+        category: 'payment_failure',
+        severity: 'warning',
+        ipAddress: '41.13.12.98',
+        details: 'Restricted account attempted checkout for order MEV-2026-44021. Order creation halted by security policy.',
+        timestamp: pastHours(8),
+      },
+      {
+        id: 'act_log_008',
+        actor: 'Untrusted Client Webhook',
+        role: 'system',
+        action: 'PAYMENT_SIGNATURE_TAMPERED',
+        targetType: 'PAYMENT',
+        targetId: 'paystack',
+        category: 'payment_failure',
+        severity: 'critical',
+        ipAddress: '45.133.1.20',
+        details: 'Security alert: Forged or corrupted HMAC-SHA512 webhook signature detected on /api/payments/paystack/webhook. Request rejected with HTTP 400.',
+        timestamp: pastHours(11),
+      },
+      {
+        id: 'act_log_009',
+        actor: 'guest_attacker',
+        role: 'guest',
+        action: 'USER_LOGIN_FAILED',
+        targetType: 'AUTH',
+        targetId: 'finance@mevotech.co.za',
+        category: 'auth',
+        severity: 'warning',
+        ipAddress: '102.165.34.19',
+        details: 'Failed customer login: Incorrect password entered for target finance@mevotech.co.za (Attempt 3 of 5 before IP throttle).',
+        timestamp: pastHours(14),
+      },
+      {
+        id: 'act_log_010',
+        actor: 'owner@mevotech.co.za',
+        role: 'owner',
+        action: 'ADMIN_LOGIN_SUCCESS',
+        targetType: 'AUTH',
+        targetId: 'usr_owner',
+        category: 'auth',
+        severity: 'info',
+        ipAddress: '105.187.32.9',
+        details: 'Administrator Mevo Executive Admin signed in to Sandton Operations Console (role: owner, MFA verified).',
+        timestamp: pastHours(16),
+      },
+      {
+        id: 'act_log_011',
+        actor: 'Mevo Executive Admin',
+        role: 'owner',
+        action: 'MERCHANDISING_SLOT_CHANGE',
+        targetType: 'MERCHANDISING',
+        targetId: 'prod_studiobook_16',
+        category: 'account_management',
+        severity: 'info',
+        ipAddress: '105.187.32.9',
+        details: 'Assigned "Mevo StudioBook Pro 16" to Hero Spotlight placement slot with priority 1 (Pinned to Top: true).',
+        timestamp: pastHours(20),
+      },
+      {
+        id: 'act_log_012',
+        actor: 'shopper@mevotech.co.za',
+        role: 'customer',
+        action: 'USER_LOGIN_SUCCESS',
+        targetType: 'AUTH',
+        targetId: 'cust_shopper_demo',
+        category: 'auth',
+        severity: 'info',
+        ipAddress: '196.25.1.1',
+        details: 'Customer Valued SA Shopper authenticated via email/password.',
+        timestamp: pastHours(24),
+      },
+    ];
+
+    this.auditLogs = [...initialLogs];
   }
 
   // ---- Promotional Banners & Seasonal Sales ----
@@ -1398,7 +1760,7 @@ class Database {
 
   // ---- Admin Dashboard Metrics ----
 
-  getDashboardMetrics(): {
+  getDashboardMetrics(timeframe: string = '12 Months'): {
     totalSalesCents: number;
     paidOrdersCount: number;
     pendingOrdersCount: number;
@@ -1406,16 +1768,19 @@ class Database {
     lowStockCount: number;
     totalProductsCount: number;
     recentOrders: Order[];
+    analytics: SalesAnalyticsSummary;
   } {
     const orders = Array.from(this.orders.values());
+    const allProducts = Array.from(this.products.values());
+    const analytics = computeSalesAnalytics(orders, allProducts, timeframe);
+
     const paidOrders = orders.filter((o) => o.status === 'PAID' || o.status === 'PROCESSING' || o.status === 'SHIPPED' || o.status === 'DELIVERED');
     const pendingOrders = orders.filter((o) => o.status === 'PENDING_PAYMENT');
 
-    const totalSalesCents = paidOrders.reduce((sum, o) => sum + o.totalCents, 0);
-    const paidOrdersCount = paidOrders.length;
+    const totalSalesCents = analytics.totalSalesCents;
+    const paidOrdersCount = analytics.totalOrdersCount;
     const averageOrderValueCents = paidOrdersCount > 0 ? Math.round(totalSalesCents / paidOrdersCount) : 0;
 
-    const allProducts = Array.from(this.products.values());
     const lowStockCount = allProducts.filter((p) => p.onHandQuantity - p.reservedQuantity <= p.lowStockThreshold).length;
 
     return {
@@ -1426,8 +1791,44 @@ class Database {
       lowStockCount,
       totalProductsCount: allProducts.length,
       recentOrders: orders.slice(0, 8),
+      analytics,
     };
   }
+
+  resetSalesToZero(performedBy: string = 'Admin'): { success: boolean; message: string } {
+    const previousCount = this.orders.size;
+    this.orders.clear();
+    this.recordAuditLog({
+      actor: performedBy,
+      role: 'owner',
+      action: 'RESET_SALES_TO_ZERO',
+      targetType: 'STORE_METRICS',
+      targetId: 'ALL_ORDERS',
+      category: 'account_management',
+      severity: 'warning',
+      details: `All sales and orders were reset to zero (purged ${previousCount} orders). Live metrics reset to R 0.00 / $0.00.`,
+    });
+    return {
+      success: true,
+      message: `Successfully reset sales and purged ${previousCount} orders. All revenue reset to zero.`,
+    };
+  }
+
+  restoreStoreOrders(performedBy: string = 'Admin'): { success: boolean; count: number } {
+    this.seedCustomerOrders();
+    this.recordAuditLog({
+      actor: performedBy,
+      role: 'owner',
+      action: 'RESTORE_STORE_ORDERS',
+      targetType: 'STORE_METRICS',
+      targetId: 'ALL_ORDERS',
+      category: 'account_management',
+      severity: 'info',
+      details: `Restored store order history for demo verification. Total orders: ${this.orders.size}`,
+    });
+    return { success: true, count: this.orders.size };
+  }
+
 
   // ---- Customer Accounts & Authentication ----
 
@@ -1437,49 +1838,489 @@ class Database {
     password: string;
     phone?: string;
     address?: any;
-  }): { success: boolean; customer?: CustomerAccount; error?: string } {
+  }): {
+    success: boolean;
+    requiresEmailVerification?: boolean;
+    verificationCode?: string;
+    customer?: CustomerAccount;
+    token?: string;
+    error?: string;
+    message?: string;
+  } {
     const cleanEmail = params.email.trim().toLowerCase();
     for (const record of this.customers.values()) {
       if (record.account.email.toLowerCase() === cleanEmail) {
-        return { success: false, error: 'An account with this email address already exists' };
+        return {
+          success: false,
+          error: 'An account with this email address already exists. Please sign in instead.',
+        };
       }
     }
 
     const id = `cust_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    // Generate a 6-digit verification code
+    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+
     const newCustomer: CustomerAccount = {
       id,
       name: params.name.trim(),
       email: cleanEmail,
       phone: params.phone?.trim() || '+27 82 000 0000',
       role: 'customer',
+      authProvider: 'local',
+      status: 'active',
+      emailVerified: false,
+      emailVerificationCode: verificationCode,
+      lastLoginAt: new Date().toISOString(),
       favourites: [],
       defaultAddress: params.address,
       createdAt: new Date().toISOString(),
     };
 
+    // Store salted bcrypt password hash
+    const passwordHash = hashPassword(params.password);
     this.customers.set(id, {
       account: newCustomer,
-      password: params.password,
+      passwordHash,
+      verificationCode,
+      verificationExpires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
     });
 
-    return { success: true, customer: newCustomer };
+    this.recordAuditLog({
+      actor: newCustomer.email,
+      role: 'customer',
+      action: 'CUSTOMER_REGISTER',
+      targetType: 'CUSTOMER',
+      targetId: id,
+      details: `Customer registered. 6-digit confirmation code generated for ${cleanEmail}. Awaiting email verification.`,
+    });
+
+    return {
+      success: true,
+      requiresEmailVerification: true,
+      verificationCode,
+      customer: newCustomer,
+      message: 'Account registered. Please enter the 6-digit confirmation code to confirm your email and proceed.',
+    };
+  }
+
+  verifyCustomerEmail(
+    email: string,
+    code: string
+  ): { success: boolean; customer?: CustomerAccount; token?: string; error?: string } {
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanCode = code.trim();
+
+    for (const record of this.customers.values()) {
+      if (record.account.email.toLowerCase() === cleanEmail) {
+        // Enforce strict code match
+        const isValidCode = Boolean(record.verificationCode && record.verificationCode === cleanCode);
+
+        // Check expiration if set
+        const isExpired = Boolean(
+          record.verificationExpires && Date.now() > new Date(record.verificationExpires).getTime()
+        );
+
+        if (!isValidCode || isExpired) {
+          this.recordAuditLog({
+            actor: cleanEmail,
+            role: 'customer',
+            action: 'EMAIL_VERIFICATION_FAILED',
+            targetType: 'CUSTOMER',
+            targetId: record.account.id,
+            details: `Failed email verification attempt for ${cleanEmail}: Invalid 6-digit code.`,
+          });
+          return {
+            success: false,
+            error: isExpired
+              ? 'Verification code has expired. Please request a new code.'
+              : 'Invalid confirmation code. Please enter the 6-digit code sent to your email.',
+          };
+        }
+
+        record.account.emailVerified = true;
+        record.account.emailVerificationCode = undefined;
+        record.verificationCode = undefined;
+        record.account.lastLoginAt = new Date().toISOString();
+
+        const token = signCustomerToken(record.account.id, record.account.email);
+
+        this.recordAuditLog({
+          actor: cleanEmail,
+          role: 'customer',
+          action: 'CUSTOMER_EMAIL_CONFIRMED',
+          targetType: 'CUSTOMER',
+          targetId: record.account.id,
+          details: `Email address successfully verified for ${cleanEmail}. Account activated for checkout.`,
+        });
+
+        return {
+          success: true,
+          customer: record.account,
+          token,
+        };
+      }
+    }
+
+    return { success: false, error: 'No account registered with this email address.' };
+  }
+
+  resendVerificationCode(email: string): { success: boolean; verificationCode?: string; message: string; error?: string } {
+    const cleanEmail = email.trim().toLowerCase();
+    for (const record of this.customers.values()) {
+      if (record.account.email.toLowerCase() === cleanEmail) {
+        const newCode = Math.floor(100000 + Math.random() * 900000).toString();
+        record.verificationCode = newCode;
+        record.account.emailVerificationCode = newCode;
+        record.verificationExpires = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+        this.recordAuditLog({
+          actor: cleanEmail,
+          role: 'customer',
+          action: 'VERIFICATION_CODE_RESENT',
+          targetType: 'CUSTOMER',
+          targetId: record.account.id,
+          details: `Resent 6-digit verification code to ${cleanEmail}.`,
+        });
+
+        return {
+          success: true,
+          verificationCode: newCode,
+          message: `A new 6-digit verification code has been generated for ${cleanEmail}.`,
+        };
+      }
+    }
+
+    return { success: false, message: '', error: 'Account not found with this email.' };
   }
 
   authenticateCustomer(
     email: string,
     passwordAttempt: string
-  ): { success: boolean; customer?: CustomerAccount; error?: string } {
+  ): { success: boolean; customer?: CustomerAccount; token?: string; error?: string } {
     const cleanEmail = email.trim().toLowerCase();
     for (const record of this.customers.values()) {
       if (record.account.email.toLowerCase() === cleanEmail) {
-        if (record.password === passwordAttempt.trim()) {
-          return { success: true, customer: record.account };
+        // Enforce account blocking
+        if (record.account.status === 'blocked') {
+          this.recordAuditLog({
+            actor: cleanEmail,
+            role: 'customer',
+            action: 'USER_LOGIN_BLOCKED',
+            targetType: 'AUTH',
+            targetId: record.account.id,
+            category: 'auth',
+            severity: 'critical',
+            details: `Blocked account attempted login. Status: blocked. Reason: ${record.account.restrictionReason || 'Administrative suspension'}`,
+          });
+          return {
+            success: false,
+            error: `Your account has been suspended by administration. Reason: ${record.account.restrictionReason || 'Security policy violation. Please contact support@mevotech.co.za.'}`,
+          };
         }
+
+        const isValid = verifyPassword(passwordAttempt.trim(), record.passwordHash);
+        if (isValid) {
+          // If stored hash was legacy, upgrade to bcrypt on successful login
+          if (!record.passwordHash.startsWith('$2a$') && !record.passwordHash.startsWith('$2b$')) {
+            record.passwordHash = hashPassword(passwordAttempt.trim());
+          }
+
+          record.account.lastLoginAt = new Date().toISOString();
+          const token = signCustomerToken(record.account.id, record.account.email);
+
+          this.recordAuditLog({
+            actor: cleanEmail,
+            role: 'customer',
+            action: 'USER_LOGIN_SUCCESS',
+            targetType: 'AUTH',
+            targetId: record.account.id,
+            category: 'auth',
+            severity: 'info',
+            details: `Customer ${record.account.name} successfully authenticated via email/password`,
+          });
+
+          return { success: true, customer: record.account, token };
+        }
+
+        this.recordAuditLog({
+          actor: cleanEmail,
+          role: 'guest',
+          action: 'USER_LOGIN_FAILED',
+          targetType: 'AUTH',
+          targetId: cleanEmail,
+          category: 'auth',
+          severity: 'warning',
+          details: `Failed customer login: Incorrect password provided for ${cleanEmail}`,
+        });
+
         return { success: false, error: 'Incorrect password entered' };
       }
     }
 
+    this.recordAuditLog({
+      actor: cleanEmail,
+      role: 'guest',
+      action: 'USER_LOGIN_FAILED',
+      targetType: 'AUTH',
+      targetId: cleanEmail,
+      category: 'auth',
+      severity: 'warning',
+      details: `Failed customer login: No account registered under ${cleanEmail}`,
+    });
+
     return { success: false, error: 'No customer account found with this email' };
+  }
+
+  socialLoginCustomer(params: {
+    provider: CustomerAuthProvider;
+    email: string;
+    name: string;
+    avatar?: string;
+    phone?: string;
+  }): { success: boolean; customer?: CustomerAccount; token?: string; error?: string } {
+    const cleanEmail = params.email.trim().toLowerCase();
+    for (const record of this.customers.values()) {
+      if (record.account.email.toLowerCase() === cleanEmail) {
+        if (record.account.status === 'blocked') {
+          this.recordAuditLog({
+            actor: cleanEmail,
+            role: 'customer',
+            action: 'USER_SOCIAL_LOGIN_BLOCKED',
+            targetType: 'AUTH',
+            targetId: record.account.id,
+            category: 'auth',
+            severity: 'critical',
+            details: `Blocked account attempted login via ${params.provider.toUpperCase()} single-sign-on. Reason: ${record.account.restrictionReason || 'Administrative suspension'}`,
+          });
+          return {
+            success: false,
+            error: `Your account has been suspended by administration. Reason: ${record.account.restrictionReason || 'Security policy violation. Please contact support@mevotech.co.za.'}`,
+          };
+        }
+
+        // Update profile with social provider details
+        record.account.lastLoginAt = new Date().toISOString();
+        record.account.authProvider = params.provider;
+        if (params.avatar) record.account.avatar = params.avatar;
+        if (params.name && !record.account.name) record.account.name = params.name;
+
+        const token = signCustomerToken(record.account.id, record.account.email);
+
+        this.recordAuditLog({
+          actor: cleanEmail,
+          role: 'customer',
+          action: 'USER_SOCIAL_LOGIN_SUCCESS',
+          targetType: 'CUSTOMER',
+          targetId: record.account.id,
+          category: 'auth',
+          severity: 'info',
+          details: `Customer ${record.account.name} authenticated via ${params.provider.toUpperCase()} single-sign-on`,
+        });
+
+        return { success: true, customer: record.account, token };
+      }
+    }
+
+    // New social registration
+    const id = `cust_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const newCustomer: CustomerAccount = {
+      id,
+      name: params.name.trim() || (params.provider === 'google' ? 'Google Customer' : 'Facebook Customer'),
+      email: cleanEmail,
+      phone: params.phone?.trim() || '+27 82 000 0000',
+      role: 'customer',
+      authProvider: params.provider,
+      status: 'active',
+      avatar: params.avatar || (params.provider === 'google' ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80' : undefined),
+      lastLoginAt: new Date().toISOString(),
+      favourites: [],
+      createdAt: new Date().toISOString(),
+    };
+
+    const dummyPasswordHash = hashPassword(`social_${Date.now()}_${Math.random()}`);
+    this.customers.set(id, {
+      account: newCustomer,
+      passwordHash: dummyPasswordHash,
+    });
+
+    const token = signCustomerToken(newCustomer.id, newCustomer.email);
+
+    this.recordAuditLog({
+      actor: newCustomer.email,
+      role: 'customer',
+      action: 'CUSTOMER_SOCIAL_REGISTER',
+      targetType: 'CUSTOMER',
+      targetId: id,
+      details: `Customer registered and authenticated via ${params.provider.toUpperCase()} single-sign-on`,
+    });
+
+    return { success: true, customer: newCustomer, token };
+  }
+
+  // ---- Commercial-Grade Customer Account Management ----
+
+  getAllCustomers(): CustomerAccount[] {
+    const ordersList = Array.from(this.orders.values());
+    const result: CustomerAccount[] = [];
+
+    for (const record of this.customers.values()) {
+      const custOrders = ordersList.filter(
+        (o) => o.customerId === record.account.id || o.customerEmail.toLowerCase() === record.account.email.toLowerCase()
+      );
+      const totalSpend = custOrders
+        .filter((o) => o.status === 'PAID' || o.status === 'PROCESSING' || o.status === 'SHIPPED' || o.status === 'DELIVERED')
+        .reduce((sum, o) => sum + o.totalCents, 0);
+
+      result.push({
+        ...record.account,
+        orderCount: custOrders.length,
+        totalSpendCents: totalSpend,
+      });
+    }
+
+    return result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+
+  updateCustomerStatus(
+    customerId: string,
+    status: CustomerAccountStatus,
+    reason?: string,
+    performedBy: string = 'Admin'
+  ): { success: boolean; customer?: CustomerAccount; error?: string } {
+    const record = this.customers.get(customerId);
+    if (!record) {
+      return { success: false, error: 'Customer not found' };
+    }
+
+    const previousStatus = record.account.status;
+    record.account.status = status;
+    record.account.restrictionReason = reason;
+    record.account.statusUpdatedAt = new Date().toISOString();
+
+    this.recordAuditLog({
+      actor: performedBy,
+      role: 'admin',
+      action: `CUSTOMER_STATUS_${status.toUpperCase()}`,
+      targetType: 'CUSTOMER',
+      targetId: customerId,
+      details: `Updated customer status from ${previousStatus.toUpperCase()} to ${status.toUpperCase()} for ${record.account.email}. Reason: ${reason || 'Administrative policy enforcement'}`,
+    });
+
+    return { success: true, customer: record.account };
+  }
+
+  // ---- Store Merchandising & Product Placement ----
+
+  updateProductPlacement(
+    productId: string,
+    slot: ProductPlacementSlot,
+    priority: number = 1,
+    isPinned: boolean = false,
+    performedBy: string = 'Admin'
+  ): { success: boolean; product?: Product; error?: string } {
+    const product = this.products.get(productId);
+    if (!product) {
+      return { success: false, error: 'Product not found' };
+    }
+
+    product.placementSlot = slot;
+    product.placementPriority = priority;
+    product.isPinnedToTop = isPinned;
+    product.updatedAt = new Date().toISOString();
+
+    this.recordAuditLog({
+      actor: performedBy,
+      role: 'admin',
+      action: 'UPDATE_PRODUCT_PLACEMENT',
+      targetType: 'PRODUCT',
+      targetId: productId,
+      details: `Product "${product.name}" assigned to placement slot "${slot}" (Priority: ${priority}, Pinned: ${isPinned})`,
+    });
+
+    return { success: true, product };
+  }
+
+  // ---- POPIA Compliance Data Operations ----
+
+  exportCustomerData(customerId: string): {
+    success: boolean;
+    data?: {
+      account: CustomerAccount;
+      orders: Order[];
+      reviewsWritten: ProductReview[];
+      exportedAt: string;
+      popiaComplianceStatement: string;
+    };
+    error?: string;
+  } {
+    const record = this.customers.get(customerId);
+    if (!record) {
+      return { success: false, error: 'Customer record not found for export' };
+    }
+
+    const customerOrders = this.getCustomerOrders(customerId);
+    const customerReviews: ProductReview[] = [];
+    for (const revList of this.reviews.values()) {
+      for (const rev of revList) {
+        if (rev.userId === customerId || rev.authorName.toLowerCase() === record.account.name.toLowerCase()) {
+          customerReviews.push(rev);
+        }
+      }
+    }
+
+    return {
+      success: true,
+      data: {
+        account: record.account,
+        orders: customerOrders,
+        reviewsWritten: customerReviews,
+        exportedAt: new Date().toISOString(),
+        popiaComplianceStatement:
+          'This data archive contains all Personal Identifiable Information (PII) stored by MEVO TECH (Pty) Ltd in compliance with South Africa Protection of Personal Information Act (POPIA) 2013.',
+      },
+    };
+  }
+
+  deleteCustomerAccount(customerId: string): { success: boolean; message: string; error?: string } {
+    const record = this.customers.get(customerId);
+    if (!record) {
+      return { success: false, message: '', error: 'Customer account not found' };
+    }
+
+    const customerName = record.account.name;
+    const customerEmail = record.account.email;
+
+    // Remove customer credentials and profile
+    this.customers.delete(customerId);
+
+    // Anonymize personal identifiable information in orders to comply with SARS tax retention while wiping PII
+    for (const order of this.orders.values()) {
+      if (order.customerId === customerId || order.customerEmail.toLowerCase() === customerEmail.toLowerCase()) {
+        order.customerName = '[Deleted User / POPIA Purge]';
+        order.customerEmail = 'anonymized@mevotech.co.za';
+        order.customerPhone = '+27 00 000 0000';
+        if (order.shippingAddress) {
+          order.shippingAddress.streetAddress = '[Redacted POPIA Request]';
+          order.shippingAddress.fullName = '[Redacted]';
+          order.shippingAddress.phone = '+27 00 000 0000';
+        }
+      }
+    }
+
+    this.recordAuditLog({
+      actor: customerEmail,
+      role: 'customer',
+      action: 'CUSTOMER_POPIA_FORGOTTEN',
+      targetType: 'CUSTOMER',
+      targetId: customerId,
+      details: `Customer requested full POPIA Section 14 account erasure. PII purged and order references anonymized for SARS compliance.`,
+    });
+
+    return {
+      success: true,
+      message: `Account for ${customerName} has been permanently deleted and PII purged pursuant to POPIA.`,
+    };
   }
 
   getCustomerById(id: string): CustomerAccount | undefined {
@@ -1505,15 +2346,21 @@ class Database {
       return { success: false, error: 'Customer not found' };
     }
 
+    // Principle 2: Never trust role or isPro from browser
+    const sanitizedUpdates = sanitizeCustomerProfileUpdates(updates);
+
     const updatedAccount: CustomerAccount = {
       ...record.account,
-      ...updates,
+      ...sanitizedUpdates,
       id: record.account.id,
+      role: 'customer',
+      email: record.account.email,
     };
 
     record.account = updatedAccount;
     return { success: true, customer: updatedAccount };
   }
+
 
   toggleCustomerFavourite(customerId: string, productId: string): string[] {
     const record = this.customers.get(customerId);
@@ -1594,6 +2441,144 @@ class Database {
 
     return { success: true, review: newReview };
   }
+
+  // ---- Price Drop Alerts ----
+
+  createPriceAlert(params: {
+    productId: string;
+    email: string;
+    targetType: PriceAlertTargetType;
+    customTargetPriceCents?: number;
+    customerId?: string;
+  }): { success: boolean; alert: PriceAlert } {
+    const product = this.products.get(params.productId);
+    if (!product) {
+      throw new Error(`Product not found: ${params.productId}`);
+    }
+
+    if (!validatePriceAlertEmail(params.email)) {
+      throw new Error('A valid email address is required.');
+    }
+
+    const currentPrice = product.promotionalPriceCents || product.priceCents;
+    const targetPrice = calculateTargetPriceCents(
+      currentPrice,
+      params.targetType,
+      params.customTargetPriceCents
+    );
+
+    const alertId = `alert_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const newAlert: PriceAlert = {
+      id: alertId,
+      productId: product.id,
+      productName: product.name,
+      productSlug: product.slug,
+      productImage: product.primaryImage,
+      email: params.email.trim().toLowerCase(),
+      customerId: params.customerId,
+      initialPriceCents: currentPrice,
+      targetPriceCents: targetPrice,
+      targetType: params.targetType,
+      status: 'ACTIVE',
+      createdAt: new Date().toISOString(),
+    };
+
+    this.priceAlerts.set(alertId, newAlert);
+
+    this.recordAuditLog({
+      actor: params.email.trim().toLowerCase(),
+      role: 'customer',
+      action: 'PRICE_ALERT_CREATED',
+      targetType: 'PRODUCT',
+      targetId: product.id,
+      category: 'system',
+      severity: 'info',
+      details: `Customer subscribed to price drop alert for "${product.name}" (Threshold target: R ${(targetPrice / 100).toFixed(2)})`,
+    });
+
+    return { success: true, alert: newAlert };
+  }
+
+  getPriceAlertsByEmail(email: string): PriceAlert[] {
+    const clean = email.trim().toLowerCase();
+    return Array.from(this.priceAlerts.values())
+      .filter((a) => a.email.toLowerCase() === clean && a.status === 'ACTIVE')
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+
+  getAllPriceAlerts(): PriceAlert[] {
+    return Array.from(this.priceAlerts.values()).sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  }
+
+  cancelPriceAlert(id: string, email?: string): boolean {
+    const alert = this.priceAlerts.get(id);
+    if (!alert) return false;
+
+    if (email && alert.email.toLowerCase() !== email.trim().toLowerCase()) {
+      return false;
+    }
+
+    alert.status = 'CANCELLED';
+    this.priceAlerts.set(id, alert);
+    return true;
+  }
+
+  simulatePriceDrop(
+    productId: string,
+    newPriceCents: number
+  ): { success: boolean; triggeredCount: number; message: string; updatedProduct: Product } {
+    const product = this.products.get(productId);
+    if (!product) {
+      throw new Error(`Product not found: ${productId}`);
+    }
+
+    const prevPrice = product.promotionalPriceCents || product.priceCents;
+    product.promotionalPriceCents = newPriceCents;
+    product.updatedAt = new Date().toISOString();
+    this.products.set(productId, product);
+
+    let triggeredCount = 0;
+    const now = new Date().toISOString();
+
+    for (const alert of this.priceAlerts.values()) {
+      if (alert.productId === productId && alert.status === 'ACTIVE') {
+        const triggers = shouldTriggerPriceAlert(
+          alert.initialPriceCents,
+          newPriceCents,
+          alert.targetPriceCents
+        );
+
+        if (triggers) {
+          alert.status = 'TRIGGERED';
+          alert.triggeredAt = now;
+          alert.lastNotifiedPriceCents = newPriceCents;
+          this.priceAlerts.set(alert.id, alert);
+          triggeredCount++;
+
+          this.recordAuditLog({
+            actor: 'Automated Price Drop Daemon',
+            role: 'system',
+            action: 'PRICE_ALERT_TRIGGERED',
+            targetType: 'PRODUCT',
+            targetId: productId,
+            category: 'system',
+            severity: 'info',
+            details: `Automated notification sent to ${alert.email}: "${product.name}" dropped from R ${(alert.initialPriceCents / 100).toFixed(2)} to R ${(newPriceCents / 100).toFixed(2)}`,
+          });
+        }
+      }
+    }
+
+    return {
+      success: true,
+      triggeredCount,
+      message: `Price dropped to R ${(newPriceCents / 100).toFixed(2)}. ${triggeredCount} automated notification(s) dispatched.`,
+      updatedProduct: product,
+    };
+  }
 }
 
 export const db = new Database();
+

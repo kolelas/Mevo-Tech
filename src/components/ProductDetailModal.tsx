@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { Product, ProductVariant } from '../types';
 import { formatZAR, calculatePayflexInstalments } from '../utils/calculations';
 import { useCart } from '../context/CartContext';
-import { ShieldCheck, Truck, RotateCcw, Check, ShoppingBag, X, Heart } from 'lucide-react';
+import { ShieldCheck, Truck, RotateCcw, Check, ShoppingBag, X, Heart, Bell } from 'lucide-react';
+import { PriceDropAlertModal } from './PriceDropAlertModal';
 
 interface ProductDetailModalProps {
   product: Product | null;
@@ -17,6 +18,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
   const [quantity, setQuantity] = useState(1);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [addedAnimation, setAddedAnimation] = useState(false);
+  const [isPriceAlertOpen, setIsPriceAlertOpen] = useState(false);
 
   if (!product) return null;
 
@@ -71,7 +73,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
                     key={idx}
                     onClick={() => setActiveImageIndex(idx)}
                     className={`w-16 h-12 rounded-lg overflow-hidden border-2 transition-all shrink-0 ${
-                      activeImageIndex === idx ? 'border-purple-600 ring-2 ring-purple-100' : 'border-neutral-200 opacity-70'
+                      activeImageIndex === idx ? 'border-orange-600 ring-2 ring-orange-100' : 'border-neutral-200 opacity-70'
                     }`}
                   >
                     <img src={img} alt="" className="w-full h-full object-cover" />
@@ -83,7 +85,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
             {/* Quick Guarantees Strip */}
             <div className="mt-6 pt-4 border-t border-neutral-200 text-xs text-neutral-600 space-y-2">
               <div className="flex items-center gap-2">
-                <Truck className="w-4 h-4 text-purple-600 shrink-0" />
+                <Truck className="w-4 h-4 text-orange-600 shrink-0" />
                 <span>Next-day dispatch from Sandton, Johannesburg depot</span>
               </div>
               <div className="flex items-center gap-2">
@@ -91,7 +93,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
                 <span>{product.warrantyPeriodMonths}-Month official South African warranty</span>
               </div>
               <div className="flex items-center gap-2">
-                <RotateCcw className="w-4 h-4 text-purple-600 shrink-0" />
+                <RotateCcw className="w-4 h-4 text-orange-600 shrink-0" />
                 <span>14-Day Consumer Protection Act exchange policy</span>
               </div>
             </div>
@@ -102,7 +104,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
             <div>
               {/* Brand and SKU */}
               <div className="flex items-center justify-between text-xs text-neutral-500 mb-1.5">
-                <span className="font-bold text-purple-600 uppercase tracking-wide">{product.brand}</span>
+                <span className="font-bold text-orange-600 uppercase tracking-wide">{product.brand}</span>
                 <span className="font-mono text-neutral-400">SKU: {selectedVariant ? selectedVariant.sku : product.sku}</span>
               </div>
 
@@ -130,7 +132,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
                 <div className="mt-2.5 pt-2 border-t border-neutral-200/60 flex items-center justify-between text-xs text-neutral-600">
                   <span>Or 4 equal interest-free payments of</span>
                   <span className="font-bold text-neutral-900 font-mono tabular-nums">
-                    {formatZAR(payflex.instalmentCents)} with <strong className="text-purple-600">Payflex</strong>
+                    {formatZAR(payflex.instalmentCents)} with <strong className="text-orange-600">Payflex</strong>
                   </span>
                 </div>
               </div>
@@ -148,7 +150,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
                         onClick={() => setSelectedVariant(v)}
                         className={`p-2.5 rounded-lg text-left text-xs border transition-all ${
                           selectedVariant?.id === v.id
-                            ? 'border-purple-600 bg-purple-50 text-purple-900 font-semibold ring-1 ring-purple-600'
+                            ? 'border-orange-600 bg-orange-50 text-orange-900 font-semibold ring-1 ring-orange-600'
                             : 'border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300'
                         }`}
                       >
@@ -215,7 +217,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
                     ? 'bg-neutral-200 text-neutral-400 cursor-not-allowed'
                     : addedAnimation
                     ? 'bg-emerald-600 text-white'
-                    : 'bg-neutral-900 text-white hover:bg-purple-600 shadow-md'
+                    : 'bg-neutral-900 text-white hover:bg-orange-600 shadow-md'
                 }`}
               >
                 {addedAnimation ? (
@@ -251,10 +253,28 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
                   }`}
                 />
               </button>
+
+              {/* Price Drop Alert Button */}
+              <button
+                type="button"
+                onClick={() => setIsPriceAlertOpen(true)}
+                aria-label="Notify when price drops"
+                title="Notify me when price drops"
+                className="p-3 rounded-lg border border-neutral-300 bg-white text-neutral-600 hover:text-orange-600 hover:border-orange-500 transition-all flex items-center justify-center cursor-pointer shadow-xs"
+              >
+                <Bell className="w-5 h-5 text-orange-600" />
+              </button>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Price Drop Alert Subscription Modal */}
+      <PriceDropAlertModal
+        product={product}
+        isOpen={isPriceAlertOpen}
+        onClose={() => setIsPriceAlertOpen(false)}
+      />
     </div>
   );
 };

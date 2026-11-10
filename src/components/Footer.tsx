@@ -1,5 +1,6 @@
 import React from 'react';
 import { ShieldCheck, Truck, Clock, CreditCard, Lock } from 'lucide-react';
+import { PaymentGatewaysRow, SocialLinksRow } from './PaymentAndSocialBadges';
 
 interface FooterProps {
   onNavigate: (view: string) => void;
@@ -12,7 +13,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
         {/* Trust Badges Strip */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8 pb-12 border-b border-neutral-800">
           <div className="flex items-start gap-3.5">
-            <div className="p-2.5 rounded-lg bg-neutral-800 text-purple-400 shrink-0">
+            <div className="p-2.5 rounded-lg bg-neutral-800 text-orange-400 shrink-0">
               <Truck className="w-5 h-5" />
             </div>
             <div>
@@ -32,7 +33,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
           </div>
 
           <div className="flex items-start gap-3.5">
-            <div className="p-2.5 rounded-lg bg-neutral-800 text-purple-400 shrink-0">
+            <div className="p-2.5 rounded-lg bg-neutral-800 text-orange-400 shrink-0">
               <CreditCard className="w-5 h-5" />
             </div>
             <div>
@@ -85,54 +86,65 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
           <div>
             <h5 className="text-xs font-bold text-white uppercase tracking-wider mb-3">Shop Categories</h5>
             <ul className="text-xs text-neutral-400 space-y-2">
-              <li><button onClick={() => onNavigate('category_laptops-notebooks')} className="hover:text-purple-400 hover:drop-shadow-[0_0_8px_rgba(168,85,247,0.7)] transition-all">Laptops & Workstations</button></li>
-              <li><button onClick={() => onNavigate('category_monitors-displays')} className="hover:text-purple-400 hover:drop-shadow-[0_0_8px_rgba(168,85,247,0.7)] transition-all">Curved OLED Displays</button></li>
-              <li><button onClick={() => onNavigate('category_desktops-workstations')} className="hover:text-purple-400 hover:drop-shadow-[0_0_8px_rgba(168,85,247,0.7)] transition-all">Custom Desktop Rigs</button></li>
-              <li><button onClick={() => onNavigate('category_audio-peripherals')} className="hover:text-purple-400 hover:drop-shadow-[0_0_8px_rgba(168,85,247,0.7)] transition-all">Audiophile Headsets</button></li>
-              <li><button onClick={() => onNavigate('category_storage-devices')} className="hover:text-purple-400 hover:drop-shadow-[0_0_8px_rgba(168,85,247,0.7)] transition-all">Gen5 NVMe Storage</button></li>
-              <li><button onClick={() => onNavigate('category_networking-smart-home')} className="hover:text-purple-400 hover:drop-shadow-[0_0_8px_rgba(168,85,247,0.7)] transition-all">WiFi 7 Mesh Networking</button></li>
-              <li><button onClick={() => onNavigate('categories_hub')} className="text-purple-400 font-semibold hover:text-purple-300 hover:drop-shadow-[0_0_8px_rgba(168,85,247,0.8)] transition-all">All Departments Hub →</button></li>
+              <li><button onClick={() => onNavigate('category_laptops-notebooks')} className="hover:text-orange-400 hover:drop-shadow-[0_0_8px_rgba(234, 88, 12,0.7)] transition-all">Laptops & Workstations</button></li>
+              <li><button onClick={() => onNavigate('category_monitors-displays')} className="hover:text-orange-400 hover:drop-shadow-[0_0_8px_rgba(234, 88, 12,0.7)] transition-all">Curved OLED Displays</button></li>
+              <li><button onClick={() => onNavigate('category_desktops-workstations')} className="hover:text-orange-400 hover:drop-shadow-[0_0_8px_rgba(234, 88, 12,0.7)] transition-all">Custom Desktop Rigs</button></li>
+              <li><button onClick={() => onNavigate('category_audio-peripherals')} className="hover:text-orange-400 hover:drop-shadow-[0_0_8px_rgba(234, 88, 12,0.7)] transition-all">Audiophile Headsets</button></li>
+              <li><button onClick={() => onNavigate('category_storage-devices')} className="hover:text-orange-400 hover:drop-shadow-[0_0_8px_rgba(234, 88, 12,0.7)] transition-all">Gen5 NVMe Storage</button></li>
+              <li><button onClick={() => onNavigate('category_networking-smart-home')} className="hover:text-orange-400 hover:drop-shadow-[0_0_8px_rgba(234, 88, 12,0.7)] transition-all">WiFi 7 Mesh Networking</button></li>
+              <li><button onClick={() => onNavigate('categories_hub')} className="text-orange-400 font-semibold hover:text-orange-300 hover:drop-shadow-[0_0_8px_rgba(234, 88, 12,0.8)] transition-all">All Departments Hub →</button></li>
             </ul>
           </div>
 
           <div>
             <h5 className="text-xs font-bold text-white uppercase tracking-wider mb-3">Customer Support</h5>
             <ul className="text-xs text-neutral-400 space-y-2">
-              <li><button onClick={() => onNavigate('account')} className="text-purple-400 font-bold hover:text-purple-300 hover:drop-shadow-[0_0_8px_rgba(168,85,247,0.7)] transition-all">Customer Account Hub</button></li>
-              <li><button onClick={() => onNavigate('account_orders')} className="hover:text-purple-400 hover:drop-shadow-[0_0_8px_rgba(168,85,247,0.7)] transition-all">Track Order Deliveries</button></li>
-              <li><button onClick={() => onNavigate('account_bought')} className="hover:text-purple-400 hover:drop-shadow-[0_0_8px_rgba(168,85,247,0.7)] transition-all">Bought Tech & Reviews</button></li>
-              <li><button onClick={() => onNavigate('info_shipping')} className="hover:text-purple-400 hover:drop-shadow-[0_0_8px_rgba(168,85,247,0.7)] transition-all">Shipping & Courier Rates</button></li>
-              <li><button onClick={() => onNavigate('info_returns')} className="hover:text-purple-400 hover:drop-shadow-[0_0_8px_rgba(168,85,247,0.7)] transition-all">Returns & Refunds</button></li>
-              <li><button onClick={() => onNavigate('info_warranty')} className="hover:text-purple-400 hover:drop-shadow-[0_0_8px_rgba(168,85,247,0.7)] transition-all">Warranty Claim Process</button></li>
-              <li><button onClick={() => onNavigate('info_contact')} className="hover:text-purple-400 hover:drop-shadow-[0_0_8px_rgba(168,85,247,0.7)] transition-all">Contact Our Specialists</button></li>
+              <li><button onClick={() => onNavigate('account')} className="text-orange-400 font-bold hover:text-orange-300 hover:drop-shadow-[0_0_8px_rgba(234, 88, 12,0.7)] transition-all">Customer Account Hub</button></li>
+              <li><button onClick={() => onNavigate('account_orders')} className="hover:text-orange-400 hover:drop-shadow-[0_0_8px_rgba(234, 88, 12,0.7)] transition-all">Track Order Deliveries</button></li>
+              <li><button onClick={() => onNavigate('account_bought')} className="hover:text-orange-400 hover:drop-shadow-[0_0_8px_rgba(234, 88, 12,0.7)] transition-all">Bought Tech & Reviews</button></li>
+              <li><button onClick={() => onNavigate('info_shipping')} className="hover:text-orange-400 hover:drop-shadow-[0_0_8px_rgba(234, 88, 12,0.7)] transition-all">Shipping & Courier Rates</button></li>
+              <li><button onClick={() => onNavigate('info_returns')} className="hover:text-orange-400 hover:drop-shadow-[0_0_8px_rgba(234, 88, 12,0.7)] transition-all">Returns & Refunds</button></li>
+              <li><button onClick={() => onNavigate('info_warranty')} className="hover:text-orange-400 hover:drop-shadow-[0_0_8px_rgba(234, 88, 12,0.7)] transition-all">Warranty Claim Process</button></li>
+              <li><button onClick={() => onNavigate('info_contact')} className="hover:text-orange-400 hover:drop-shadow-[0_0_8px_rgba(234, 88, 12,0.7)] transition-all">Contact Our Specialists</button></li>
             </ul>
           </div>
 
           <div>
             <h5 className="text-xs font-bold text-white uppercase tracking-wider mb-3">Legal & Compliance</h5>
             <ul className="text-xs text-neutral-400 space-y-2">
-              <li><button onClick={() => onNavigate('info_privacy')} className="hover:text-purple-400 hover:drop-shadow-[0_0_8px_rgba(168,85,247,0.7)] transition-all">POPIA Privacy Notice</button></li>
-              <li><button onClick={() => onNavigate('info_terms')} className="hover:text-purple-400 hover:drop-shadow-[0_0_8px_rgba(168,85,247,0.7)] transition-all">Terms of Sale</button></li>
-              <li><button onClick={() => onNavigate('info_cpa')} className="hover:text-purple-400 hover:drop-shadow-[0_0_8px_rgba(168,85,247,0.7)] transition-all">Consumer Protection Act</button></li>
-              <li><button onClick={() => onNavigate('admin')} className="text-purple-400 hover:text-purple-300 hover:drop-shadow-[0_0_8px_rgba(168,85,247,0.8)] transition-all">Admin Portal</button></li>
+              <li><button onClick={() => onNavigate('info_privacy')} className="hover:text-orange-400 hover:drop-shadow-[0_0_8px_rgba(234, 88, 12,0.7)] transition-all">POPIA Privacy Notice</button></li>
+              <li><button onClick={() => onNavigate('info_terms')} className="hover:text-orange-400 hover:drop-shadow-[0_0_8px_rgba(234, 88, 12,0.7)] transition-all">Terms of Sale</button></li>
+              <li><button onClick={() => onNavigate('info_cpa')} className="hover:text-orange-400 hover:drop-shadow-[0_0_8px_rgba(234, 88, 12,0.7)] transition-all">Consumer Protection Act</button></li>
+              <li><button onClick={() => onNavigate('admin')} className="text-orange-400 hover:text-orange-300 hover:drop-shadow-[0_0_8px_rgba(234, 88, 12,0.8)] transition-all">Admin Portal</button></li>
             </ul>
           </div>
         </div>
 
-        {/* Bottom copyright & payment methods */}
+        {/* Dedicated Socials & Payment Gateways Strip (Directly matching user reference screenshots) */}
+        <div className="py-10 border-b border-neutral-800 grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          {/* Connect with Mevo Tech (Reference Image 2: image_097ccab1.png) */}
+          <div className="lg:col-span-5 space-y-3">
+            <SocialLinksRow title="Connect with Mevo Tech" />
+            <p className="text-xs text-neutral-400">
+              Join the Mevo Tech community for instant hardware drop notifications, RTX GPU restock alerts, and South African tech giveaways.
+            </p>
+          </div>
+
+          {/* We accept (Reference Image 1: image_42611614.png) */}
+          <div className="lg:col-span-7 space-y-3">
+            <PaymentGatewaysRow />
+            <p className="text-[11px] text-neutral-400">
+              All transactions encrypted with PCI-DSS Level 1 compliance. We support all major South African banks, Payflex 4-instalment interest-free split payments, and instant EFT.
+            </p>
+          </div>
+        </div>
+
+        {/* Bottom copyright */}
         <div className="pt-8 flex flex-col md:flex-row items-center justify-between text-xs text-neutral-500 gap-4">
           <p>© {new Date().getFullYear()} Mevo Tech (Pty) Ltd. Reg No: 2024/091823/07. All rights reserved.</p>
-          <div className="flex items-center gap-3 text-neutral-400 text-xs">
-            <span className="font-medium text-neutral-300">Accepted Gateways:</span>
-            <span>PayFast</span>
-            <span>·</span>
-            <span>Payflex BNPL</span>
-            <span>·</span>
-            <span>Ozow EFT</span>
-            <span>·</span>
-            <span>Paystack</span>
-            <span>·</span>
-            <span>Crypto (USDT/BTC)</span>
+          <div className="flex items-center gap-2 text-neutral-400 text-xs">
+            <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>Sandton Depot Secure Dispatch · 100% Guaranteed Delivery</span>
           </div>
         </div>
       </div>

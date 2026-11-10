@@ -1,26 +1,34 @@
 @import "tailwindcss";
 
 @layer utilities {
+  .glow-orange-hover,
   .glow-purple-hover {
     transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   }
+  .glow-orange-hover:hover,
   .glow-purple-hover:hover {
-    box-shadow: 0 0 18px 2px rgba(168, 85, 247, 0.45);
-    border-color: rgba(168, 85, 247, 0.8) !important;
+    box-shadow: 0 0 18px 2px rgba(234, 88, 12, 0.45);
+    border-color: rgba(234, 88, 12, 0.8) !important;
   }
+  .text-glow-orange-hover:hover,
   .text-glow-purple-hover:hover {
-    color: rgb(168, 85, 247) !important;
-    text-shadow: 0 0 12px rgba(168, 85, 247, 0.55);
+    color: rgb(234, 88, 12) !important;
+    text-shadow: 0 0 12px rgba(234, 88, 12, 0.55);
   }
 }
 
-/* Ensure links and category cards glow purple on hover */
+/* Ensure links and category cards glow orange on hover */
 .category-card-glow {
   transition: all 0.25s ease;
 }
 .category-card-glow:hover {
-  box-shadow: 0 4px 20px -2px rgba(168, 85, 247, 0.35);
-  border-color: rgba(168, 85, 247, 0.6) !important;
+  box-shadow: 0 4px 20px -2px rgba(234, 88, 12, 0.35);
+  border-color: rgba(234, 88, 12, 0.6) !important;
+}
+
+html, body {
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 

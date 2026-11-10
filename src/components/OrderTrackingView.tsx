@@ -83,7 +83,7 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({ initialOrd
               placeholder="e.g. MEV-2026-94812"
               value={referenceInput}
               onChange={(e) => setReferenceInput(e.target.value)}
-              className="w-full px-3 py-2 text-xs border border-neutral-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-purple-600 font-mono uppercase"
+              className="w-full px-3 py-2 text-xs border border-neutral-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-600 font-mono uppercase"
             />
           </div>
 
@@ -94,7 +94,7 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({ initialOrd
               placeholder="e.g. customer@example.co.za"
               value={emailInput}
               onChange={(e) => setEmailInput(e.target.value)}
-              className="w-full px-3 py-2 text-xs border border-neutral-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-purple-600"
+              className="w-full px-3 py-2 text-xs border border-neutral-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-600"
             />
           </div>
 
@@ -102,7 +102,7 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({ initialOrd
             <button
               type="submit"
               disabled={isLoading || !referenceInput.trim() || !emailInput.trim()}
-              className="w-full py-2.5 px-4 bg-neutral-900 text-white rounded-lg text-xs font-bold hover:bg-purple-600 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-40"
+              className="w-full py-2.5 px-4 bg-neutral-900 text-white rounded-lg text-xs font-bold hover:bg-orange-600 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-40"
             >
               <Search className="w-4 h-4" />
               <span>{isLoading ? 'Searching...' : 'Track Order'}</span>
@@ -132,9 +132,9 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({ initialOrd
                       order.status === 'PAID'
                         ? 'bg-emerald-100 text-emerald-800'
                         : order.status === 'SHIPPED'
-                        ? 'bg-purple-100 text-purple-800'
+                        ? 'bg-orange-100 text-orange-800'
                         : order.status === 'DELIVERED'
-                        ? 'bg-purple-100 text-purple-800'
+                        ? 'bg-orange-100 text-orange-800'
                         : order.status === 'PENDING_PAYMENT'
                         ? 'bg-amber-100 text-amber-800'
                         : 'bg-neutral-100 text-neutral-800'
@@ -166,7 +166,7 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({ initialOrd
                       key={step}
                       className={`${
                         isCurrent
-                          ? 'text-purple-600 font-bold'
+                          ? 'text-orange-600 font-bold'
                           : isCompleted
                           ? 'text-neutral-800'
                           : 'text-neutral-400'
@@ -180,7 +180,7 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({ initialOrd
 
               <div className="w-full bg-neutral-100 h-2 rounded-full overflow-hidden flex">
                 <div
-                  className="bg-purple-600 h-2 rounded-full transition-all duration-500"
+                  className="bg-orange-600 h-2 rounded-full transition-all duration-500"
                   style={{
                     width: `${Math.max(10, ((currentStepIndex + 1) / LIFECYCLE_STEPS.length) * 100)}%`,
                   }}
@@ -192,19 +192,19 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({ initialOrd
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 text-xs">
               <div>
                 <h4 className="font-bold text-neutral-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                  <Truck className="w-4 h-4 text-purple-600" />
+                  <Truck className="w-4 h-4 text-orange-600" />
                   <span>Courier & Dispatch</span>
                 </h4>
                 {order.trackingNumber ? (
                   <div className="bg-neutral-50 rounded-xl p-3 border border-neutral-200 space-y-1.5">
                     <p><strong className="text-neutral-700">Courier:</strong> {order.courierName || 'The Courier Guy'}</p>
-                    <p><strong className="text-neutral-700">Waybill No:</strong> <span className="font-mono font-bold text-purple-700">{order.trackingNumber}</span></p>
+                    <p><strong className="text-neutral-700">Waybill No:</strong> <span className="font-mono font-bold text-orange-700">{order.trackingNumber}</span></p>
                     {order.trackingUrl && (
                       <a
                         href={order.trackingUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-purple-600 font-semibold hover:underline mt-1"
+                        className="inline-flex items-center gap-1 text-orange-600 font-semibold hover:underline mt-1"
                       >
                         <span>View Live Courier Tracking</span>
                         <ExternalLink className="w-3.5 h-3.5" />
@@ -233,12 +233,12 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({ initialOrd
 
             {/* Warehouse Manager Sandbox simulation buttons */}
             {isFulfilment && (
-              <div className="mt-6 pt-4 border-t border-neutral-200/60 bg-purple-50/50 -mx-6 -mb-6 p-4 rounded-b-2xl">
-                <p className="text-xs font-bold text-purple-900 mb-2">Warehouse Sandbox Controls:</p>
+              <div className="mt-6 pt-4 border-t border-neutral-200/60 bg-orange-50/50 -mx-6 -mb-6 p-4 rounded-b-2xl">
+                <p className="text-xs font-bold text-orange-900 mb-2">Warehouse Sandbox Controls:</p>
                 <div className="flex flex-wrap gap-2 text-xs">
                   <button
                     onClick={() => handleQuickStatusUpdate('PROCESSING')}
-                    className="px-3 py-1.5 bg-white border border-purple-200 text-purple-700 rounded-md font-semibold hover:bg-purple-100"
+                    className="px-3 py-1.5 bg-white border border-orange-200 text-orange-700 rounded-md font-semibold hover:bg-orange-100"
                   >
                     Mark Processing
                   </button>
@@ -248,7 +248,7 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({ initialOrd
                       const refreshed = await api.getOrderByReference(order.reference);
                       setOrder(refreshed);
                     }}
-                    className="px-3 py-1.5 bg-purple-600 text-white rounded-md font-semibold hover:bg-purple-700"
+                    className="px-3 py-1.5 bg-orange-600 text-white rounded-md font-semibold hover:bg-orange-700"
                   >
                     Assign Waybill & Mark Shipped
                   </button>
@@ -310,7 +310,7 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({ initialOrd
           <div className="text-center pt-2">
             <button
               onClick={onBackToShopping}
-              className="text-xs font-semibold text-purple-600 hover:text-purple-800 underline"
+              className="text-xs font-semibold text-orange-600 hover:text-orange-800 underline"
             >
               Continue Shopping
             </button>

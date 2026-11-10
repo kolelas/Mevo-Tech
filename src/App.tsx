@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { AuthProvider } from './context/AuthContext';
-import { CartProvider } from './context/CartContext';
+import { CartProvider, useCart } from './context/CartContext';
+import { ComparisonProvider, useComparison } from './context/ComparisonContext';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
 import { ProductCard } from './components/ProductCard';
@@ -16,6 +17,11 @@ import { InfoPages } from './components/InfoPages';
 import { PromotionalBanner } from './components/PromotionalBanner';
 import { CategoryPage } from './components/CategoryPage';
 import { CategoriesHub } from './components/CategoriesHub';
+import { MevoPromoModal } from './components/MevoPromoModal';
+import { ProductComparisonModal } from './components/ProductComparisonModal';
+import { ProductComparisonDock } from './components/ProductComparisonDock';
+import { ComparisonToastNotification } from './components/ComparisonToastNotification';
+import { useAuth } from './context/AuthContext';
 import { CATEGORIES_DATA, getCategoryBySlug, getCategoryByDbName } from './data/categories';
 import { api } from './services/api';
 import { Order, Product } from './types';
@@ -31,6 +37,11 @@ import {
   HardDrive,
   Wifi,
   Package,
+  Flame,
+  Clock,
+  TrendingUp,
+  Zap,
+  Tag,
 } from 'lucide-react';
 
 const ICON_MAP = {
@@ -43,7 +54,10 @@ const ICON_MAP = {
 };
 
 export function MainStore() {
-  const [currentView, setCurrentView] = useState<string>('storefront');
+  const { isCustomerLoggedIn, openAuthModal } = useAuth();
+  const { addItem } = useCart();
+  const { isComparisonModalOpen, setIsComparisonModalOpen } = useComparison();
+  const [currentView, setCurrentView] = useState<string>('dashboard');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortBy, setSortBy] = useState<'relevance' | 'price_asc' | 'price_desc' | 'newest'>('relevance');
 
@@ -54,14 +68,35 @@ export function MainStore() {
   const [isCheckoutOpen, setIsCheckoutOpen] = useState<boolean>(false);
   const [trackedOrder, setTrackedOrder] = useState<Order | null>(null);
 
+  // Strict logged-out checkout prevention: Route logged-out users to Registration
+  const handleProceedToCheckout = useCallback(() => {
+    if (!isCustomerLoggedIn) {
+      openAuthModal('register', true);
+    } else {
+      setIsCheckoutOpen(true);
+    }
+  }, [isCustomerLoggedIn, openAuthModal]);
+
   // Parse URL pathname and hash on mount and update view
   useEffect(() => {
     const handleLocationChange = () => {
       const hash = window.location.hash.replace('#', '');
       const path = window.location.pathname.replace(/^\/+/, '');
 
-      if (path === 'admin' || path.startsWith('admin/') || hash === 'admin') {
-        setCurrentView('admin');
+      if (hash === 'storefront' || path === 'storefront' || hash === 'shop') {
+        setCurrentView('storefront');
+        return;
+      }
+      if (
+        path === 'admin' ||
+        path.startsWith('admin/') ||
+        hash === 'admin' ||
+        hash === 'dashboard' ||
+        path === 'dashboard' ||
+        hash === '' ||
+        path === ''
+      ) {
+        setCurrentView('dashboard');
         return;
       }
       if (hash.startsWith('category=')) {
@@ -120,8 +155,8 @@ export function MainStore() {
       window.location.hash = 'categories';
     } else if (view === 'track') {
       window.location.hash = 'track';
-    } else if (view === 'admin') {
-      window.location.hash = 'admin';
+    } else if (view === 'admin' || view === 'dashboard') {
+      window.location.hash = 'dashboard';
     } else if (view.startsWith('account')) {
       window.location.hash = view;
     } else if (view.startsWith('info_')) {
@@ -181,17 +216,36 @@ export function MainStore() {
       )
     : [];
 
-  // Dedicated Secured Back Panel View: Storefront, categories, customer hero, and customer footer are strictly hidden
-  if (currentView === 'admin') {
+  // Dynamic Storefront Merchandising Zones
+  const heroSpotlightProduct = products.find((p) => p.placementSlot === 'hero_spotlight') || products[0];
+  const dealsOfDayProducts = products
+    .filter((p) => p.placementSlot === 'deals_of_the_day')
+    .sort((a, b) => (b.placementPriority || 0) - (a.placementPriority || 0));
+  const trendingProducts = products
+    .filter((p) => p.placementSlot === 'trending_now')
+    .sort((a, b) => (b.placementPriority || 0) - (a.placementPriority || 0));
+
+  // Pinned products and high-priority items lead the catalogue when sorting by relevance
+  const sortedCatalogueProducts = [...products].sort((a, b) => {
+    if (sortBy === 'relevance') {
+      if (a.isPinnedToTop && !b.isPinnedToTop) return -1;
+      if (!a.isPinnedToTop && b.isPinnedToTop) return 1;
+      return (b.placementPriority || 0) - (a.placementPriority || 0);
+    }
+    return 0;
+  });
+
+  // Dedicated Secured Back Panel View: Pro Template Dashboard & Management Console
+  if (currentView === 'admin' || currentView === 'dashboard') {
     return (
-      <div className="min-h-screen bg-neutral-900 text-neutral-900 font-sans antialiased">
+      <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-[#f8f9fc] text-slate-900 font-sans antialiased">
         <AdminPortal onBackToStore={() => navigateToView('storefront')} />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-neutral-50 text-neutral-900 font-sans">
+    <div className="min-h-screen w-full max-w-full overflow-x-hidden flex flex-col bg-neutral-50 text-neutral-900 font-sans">
       {/* Universal Storefront Header with 3-Zone Contract */}
       <Header
         currentView={currentView}
@@ -199,6 +253,9 @@ export function MainStore() {
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
         onNavigateCategory={navigateToCategory}
+        products={products}
+        onSelectProduct={handleSelectProduct}
+        onProceedToCheckout={handleProceedToCheckout}
       />
 
       {/* Main Content Area */}
@@ -235,6 +292,8 @@ export function MainStore() {
                   navigateToCategory(config.slug);
                 }
               }}
+              products={products}
+              onSelectProduct={handleSelectProduct}
             />
 
             {/* Storefront Hero Section */}
@@ -242,7 +301,7 @@ export function MainStore() {
               <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 lg:py-20 grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
                 {/* Text Content */}
                 <div className="space-y-6 z-10">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-purple-400 uppercase tracking-widest">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-orange-400 uppercase tracking-widest">
                     <span>Sandton Warehouse Depot</span>
                     <span aria-hidden="true">·</span>
                     <span>100% Own Local Stock</span>
@@ -259,7 +318,7 @@ export function MainStore() {
                   <div className="flex flex-wrap items-center gap-3 pt-2">
                     <button
                       onClick={() => navigateToView('categories_hub')}
-                      className="px-6 py-3.5 bg-purple-600 text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-purple-700 transition-colors shadow-lg flex items-center gap-2 group"
+                      className="px-6 py-3.5 bg-orange-600 text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-orange-700 transition-colors shadow-lg flex items-center gap-2 group"
                     >
                       <span>Explore Category Pages</span>
                       <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
@@ -287,27 +346,53 @@ export function MainStore() {
                       <span>Official 2-3 Year Local Warranty</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="font-mono text-purple-400 font-bold">15% VAT</span>
+                      <span className="font-mono text-orange-400 font-bold">15% VAT</span>
                       <span>Compliant Invoicing Included</span>
                     </div>
                   </div>
                 </div>
 
-                {/* Hero Showcase Photography */}
-                <div className="relative aspect-16/10 rounded-2xl overflow-hidden shadow-2xl border border-neutral-800 bg-neutral-950 flex items-center justify-center">
+                {/* Hero Showcase Photography & Spotlight */}
+                <div
+                  onClick={() => heroSpotlightProduct && handleSelectProduct(heroSpotlightProduct)}
+                  className="relative aspect-16/10 rounded-2xl overflow-hidden shadow-2xl border border-neutral-800 bg-neutral-950 flex items-center justify-center cursor-pointer group"
+                >
                   <img
-                    src="/src/assets/images/hero_tech_showcase_1793053698167.jpg"
-                    alt="Mevo Tech flagship computing setup"
+                    src={heroSpotlightProduct?.primaryImage || "/src/assets/images/hero_tech_showcase_1793053698167.jpg"}
+                    alt={heroSpotlightProduct?.name || "Mevo Tech flagship computing setup"}
                     referrerPolicy="no-referrer"
-                    className="w-full h-full object-cover object-center"
+                    className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-neutral-950/80 via-transparent to-transparent pointer-events-none" />
-                  <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between text-xs text-neutral-300 backdrop-blur-md bg-neutral-900/60 p-3 rounded-xl border border-neutral-800">
+                  <div className="absolute inset-0 bg-gradient-to-t from-neutral-950/90 via-neutral-950/20 to-transparent pointer-events-none" />
+
+                  <div className="absolute top-4 left-4 flex items-center gap-2">
+                    <span className="bg-orange-600/90 text-white text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md backdrop-blur-md flex items-center gap-1.5 shadow-md">
+                      <Sparkles className="w-3.5 h-3.5 text-orange-200" />
+                      Hero Spotlight
+                    </span>
+                  </div>
+
+                  <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between text-xs text-neutral-300 backdrop-blur-md bg-neutral-900/80 p-3.5 rounded-xl border border-neutral-700/80 group-hover:border-orange-500 transition-colors">
                     <div>
-                      <p className="font-bold text-white">Mevo StudioBook Pro 16 & Lumina OLED</p>
-                      <p className="text-[11px] text-neutral-400">Tested and bench-verified in Johannesburg</p>
+                      <p className="font-bold text-white group-hover:text-orange-300 transition-colors text-sm">
+                        {heroSpotlightProduct?.name || 'Mevo StudioBook Pro 16 & Lumina OLED'}
+                      </p>
+                      <p className="text-[11px] text-neutral-400">
+                        {heroSpotlightProduct?.tagline || 'Tested and bench-verified in Johannesburg'}
+                      </p>
                     </div>
-                    <span className="font-mono font-bold text-purple-400">From R 21,999.00</span>
+                    <div className="text-right pl-3 shrink-0">
+                      <span className="font-mono font-bold text-orange-400 text-sm block">
+                        {heroSpotlightProduct
+                          ? (heroSpotlightProduct.promotionalPriceCents
+                              ? `R ${(heroSpotlightProduct.promotionalPriceCents / 100).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`
+                              : `R ${(heroSpotlightProduct.priceCents / 100).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`)
+                          : 'From R 21,999.00'}
+                      </span>
+                      <span className="text-[10px] text-neutral-400 flex items-center justify-end gap-1 group-hover:text-orange-300">
+                        View item <ArrowRight className="w-3 h-3" />
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -318,7 +403,7 @@ export function MainStore() {
               <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex flex-col sm:flex-row items-baseline justify-between mb-8">
                   <div>
-                    <div className="flex items-center gap-2 text-xs font-bold text-purple-600 uppercase tracking-widest mb-1">
+                    <div className="flex items-center gap-2 text-xs font-bold text-orange-600 uppercase tracking-widest mb-1">
                       <Sparkles className="w-3.5 h-3.5" />
                       <span>Independent Category Pages</span>
                     </div>
@@ -328,7 +413,7 @@ export function MainStore() {
                   </div>
                   <button
                     onClick={() => navigateToView('categories_hub')}
-                    className="text-xs font-bold text-purple-600 hover:text-purple-700 flex items-center gap-1 mt-2 sm:mt-0"
+                    className="text-xs font-bold text-orange-600 hover:text-orange-700 flex items-center gap-1 mt-2 sm:mt-0"
                   >
                     <span>View all departments</span>
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -347,7 +432,7 @@ export function MainStore() {
                       <button
                         key={cat.slug}
                         onClick={() => navigateToCategory(cat.slug)}
-                        className="group text-left bg-neutral-50 hover:bg-white border border-neutral-200 hover:border-purple-500 rounded-2xl overflow-hidden shadow-xs hover:shadow-[0_0_25px_rgba(168,85,247,0.35)] transition-all duration-300 flex flex-col justify-between"
+                        className="group text-left bg-neutral-50 hover:bg-white border border-neutral-200 hover:border-orange-500 rounded-2xl overflow-hidden shadow-xs hover:shadow-[0_0_25px_rgba(234, 88, 12,0.35)] transition-all duration-300 flex flex-col justify-between"
                       >
                         <div className="relative aspect-16/9 w-full bg-neutral-900 overflow-hidden">
                           <img
@@ -357,14 +442,14 @@ export function MainStore() {
                           />
                           <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/30 to-transparent" />
                           <div className="absolute top-3 left-3 bg-neutral-900/80 backdrop-blur-md px-2.5 py-1 rounded-lg text-xs font-semibold text-white flex items-center gap-1.5 border border-neutral-800">
-                            <Icon className="w-3.5 h-3.5 text-purple-400" />
+                            <Icon className="w-3.5 h-3.5 text-orange-400" />
                             <span>{catCount} SKUs In Stock</span>
                           </div>
                         </div>
 
                         <div className="p-5 w-full flex-1 flex flex-col justify-between space-y-3">
                           <div>
-                            <h3 className="text-base font-bold text-neutral-900 group-hover:text-purple-600 transition-colors">
+                            <h3 className="text-base font-bold text-neutral-900 group-hover:text-orange-600 transition-colors">
                               {cat.name}
                             </h3>
                             <p className="text-xs text-neutral-500 mt-1 line-clamp-2">
@@ -376,7 +461,7 @@ export function MainStore() {
                             <span className="font-medium text-neutral-600">
                               {cat.highlights[0]?.value}
                             </span>
-                            <span className="font-bold text-purple-600 flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
+                            <span className="font-bold text-orange-600 flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
                               <span>Enter Page</span>
                               <ArrowRight className="w-3.5 h-3.5" />
                             </span>
@@ -388,6 +473,86 @@ export function MainStore() {
                 </div>
               </div>
             </section>
+
+            {/* MERCHANDISING ZONE 1: DEALS OF THE DAY */}
+            {dealsOfDayProducts.length > 0 && (
+              <section className="bg-neutral-900 text-white py-12 border-b border-neutral-800">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+                    <div>
+                      <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-bold uppercase tracking-wider mb-2">
+                        <Flame className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                        <span>Curated Merchandising · Deals of the Day</span>
+                      </div>
+                      <h2 className="text-2xl font-black text-white tracking-tight">
+                        Exclusive Limited-Allocation Deals
+                      </h2>
+                      <p className="text-xs text-neutral-400 mt-1">
+                        Hand-picked daily hardware discounts direct from Sandton stock. Guaranteed dispatch today.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 bg-neutral-800/80 border border-neutral-700 px-3 py-1.5 rounded-xl text-xs text-neutral-300">
+                      <Clock className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Refreshes Daily 00:00 SAST</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                    {dealsOfDayProducts.map((product) => (
+                      <ProductCard
+                        key={`deal-${product.id}`}
+                        product={product}
+                        onSelect={(p) => handleSelectProduct(p)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {/* MERCHANDISING ZONE 2: TRENDING NOW */}
+            {trendingProducts.length > 0 && (
+              <section className="bg-orange-950/20 border-b border-orange-900/30 py-12">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+                    <div>
+                      <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-orange-500/20 border border-orange-500/40 text-orange-300 text-xs font-bold uppercase tracking-wider mb-2">
+                        <TrendingUp className="w-3.5 h-3.5 text-orange-400" />
+                        <span>Storefront Trending Ribbon</span>
+                      </div>
+                      <h2 className="text-2xl font-black text-neutral-900 tracking-tight">
+                        Trending Hardware Across Mevo Tech
+                      </h2>
+                      <p className="text-xs text-neutral-500 mt-1">
+                        Most purchased, reviewed, and requested workstation gear this week in South Africa.
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        const anchor = document.getElementById('catalogue-anchor');
+                        anchor?.scrollIntoView({ behavior: 'smooth' });
+                      }}
+                      className="text-xs font-bold text-orange-600 hover:text-orange-700 flex items-center gap-1 self-start sm:self-auto"
+                    >
+                      <span>Explore all inventory</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                    {trendingProducts.map((product) => (
+                      <ProductCard
+                        key={`trend-${product.id}`}
+                        product={product}
+                        onSelect={(p) => handleSelectProduct(p)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </section>
+            )}
 
             {/* Quick In-Stock Catalogue Grid */}
             <section id="catalogue-anchor" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -437,14 +602,14 @@ export function MainStore() {
                   <p className="text-xs text-neutral-500 mb-4">Try clearing your search query.</p>
                   <button
                     onClick={() => setSearchQuery('')}
-                    className="px-4 py-2 bg-neutral-900 text-white rounded-lg text-xs font-semibold hover:bg-purple-600 transition-colors"
+                    className="px-4 py-2 bg-neutral-900 text-white rounded-lg text-xs font-semibold hover:bg-orange-600 transition-colors"
                   >
                     Clear Search
                   </button>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                  {products.map((product) => (
+                  {sortedCatalogueProducts.map((product) => (
                     <ProductCard
                       key={product.id}
                       product={product}
@@ -464,7 +629,7 @@ export function MainStore() {
             allProducts={products}
             onSelectProduct={(p) => handleSelectProduct(p)}
             onBackToStore={() => navigateToView('storefront')}
-            onProceedToCheckout={() => setIsCheckoutOpen(true)}
+            onProceedToCheckout={handleProceedToCheckout}
           />
         )}
 
@@ -487,7 +652,7 @@ export function MainStore() {
             onBackToStore={() => navigateToView('storefront')}
             onProceedToPayOrder={(order) => {
               setTrackedOrder(order);
-              setIsCheckoutOpen(true);
+              handleProceedToCheckout();
             }}
           />
         )}
@@ -511,7 +676,7 @@ export function MainStore() {
 
       {/* Cart Drawer */}
       <CartDrawer
-        onProceedToCheckout={() => setIsCheckoutOpen(true)}
+        onProceedToCheckout={handleProceedToCheckout}
       />
 
       {/* Wishlist Drawer */}
@@ -528,8 +693,30 @@ export function MainStore() {
         onOrderComplete={handleOrderCompleted}
       />
 
-      {/* Customer Authentication Modal */}
-      <AuthModal />
+      {/* Customer Authentication Modal with Checkout Continuation Flow */}
+      <AuthModal onAuthSuccess={() => setIsCheckoutOpen(true)} />
+
+      {/* Mevo Promotions & Vouchers Pop-Up Modal */}
+      <MevoPromoModal
+        products={products}
+        onSelectProduct={(p) => handleSelectProduct(p)}
+        onExploreDeals={() => navigateToView('categories_hub')}
+        onAddToCart={(p) => addItem(p)}
+      />
+
+      {/* Product Comparison Modal (Up to 3 products side-by-side) */}
+      <ProductComparisonModal
+        isOpen={isComparisonModalOpen}
+        onClose={() => setIsComparisonModalOpen(false)}
+        allProducts={products}
+        onSelectProduct={(p) => handleSelectProduct(p)}
+      />
+
+      {/* Product Comparison Persistent Floating Dock */}
+      <ProductComparisonDock />
+
+      {/* Product Comparison Toast Notification */}
+      <ComparisonToastNotification />
 
       {/* Universal Footer */}
       <Footer onNavigate={(view) => {
@@ -548,7 +735,9 @@ export function App() {
   return (
     <AuthProvider>
       <CartProvider>
-        <MainStore />
+        <ComparisonProvider>
+          <MainStore />
+        </ComparisonProvider>
       </CartProvider>
     </AuthProvider>
   );

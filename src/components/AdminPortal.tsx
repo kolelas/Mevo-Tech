@@ -59,7 +59,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToStore }) => {
     return (
       <div className="min-h-[70vh] flex flex-col items-center justify-center p-6 text-center">
         <div className="w-12 h-12 rounded-xl bg-neutral-900 text-white flex items-center justify-center shadow-md animate-bounce mb-4">
-          <Lock className="w-6 h-6 text-purple-400" />
+          <Lock className="w-6 h-6 text-orange-400" />
         </div>
         <h2 className="text-base font-bold text-neutral-900">Verifying Security Session</h2>
         <p className="text-xs text-neutral-500 mt-1">Connecting to Sandton Depot administrative gateway...</p>
@@ -82,7 +82,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToStore }) => {
               />
             </div>
             <div className="flex items-center justify-center gap-2">
-              <span className="text-xs font-bold uppercase tracking-widest text-purple-600 bg-purple-50 px-2.5 py-0.5 rounded-full border border-purple-200">
+              <span className="text-xs font-bold uppercase tracking-widest text-orange-600 bg-orange-50 px-2.5 py-0.5 rounded-full border border-orange-200">
                 Sandton Depot Security Gateway
               </span>
             </div>
@@ -133,7 +133,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToStore }) => {
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     placeholder="e.g. admin or admin@mevotech.co.za"
-                    className="w-full pl-9 pr-3 py-2.5 text-xs bg-neutral-50 border border-neutral-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-600 focus:border-transparent text-neutral-900 font-medium transition-all"
+                    className="w-full pl-9 pr-3 py-2.5 text-xs bg-neutral-50 border border-neutral-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-600 focus:border-transparent text-neutral-900 font-medium transition-all"
                   />
                 </div>
               </div>
@@ -157,7 +157,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToStore }) => {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Enter admin password"
-                    className="w-full pl-9 pr-10 py-2.5 text-xs bg-neutral-50 border border-neutral-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-600 focus:border-transparent text-neutral-900 font-mono transition-all"
+                    className="w-full pl-9 pr-10 py-2.5 text-xs bg-neutral-50 border border-neutral-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-600 focus:border-transparent text-neutral-900 font-mono transition-all"
                   />
                   <button
                     type="button"
@@ -173,7 +173,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToStore }) => {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full py-3 px-4 bg-neutral-900 hover:bg-purple-600 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-md hover:shadow-lg disabled:opacity-50 flex items-center justify-center gap-2 group cursor-pointer"
+                className="w-full py-3 px-4 bg-neutral-900 hover:bg-orange-600 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-md hover:shadow-lg disabled:opacity-50 flex items-center justify-center gap-2 group cursor-pointer"
               >
                 <span>{isSubmitting ? 'Authenticating Gateway...' : 'Sign In to Admin Portal'}</span>
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
@@ -194,15 +194,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToStore }) => {
                 <button
                   type="button"
                   onClick={() => handleFillDemoCredentials('admin', 'MevoTech@2026!')}
-                  className="w-full text-left p-2.5 rounded-xl border border-neutral-200 hover:border-purple-500 hover:bg-purple-50/60 transition-colors flex items-center justify-between group"
+                  className="w-full text-left p-2.5 rounded-xl border border-neutral-200 hover:border-orange-500 hover:bg-orange-50/60 transition-colors flex items-center justify-between group"
                 >
                   <div>
-                    <p className="font-bold text-neutral-900 group-hover:text-purple-700">Executive Administrator (Owner)</p>
+                    <p className="font-bold text-neutral-900 group-hover:text-orange-700">Executive Administrator (Owner)</p>
                     <p className="text-[11px] text-neutral-500 font-mono">
                       User: <strong>admin</strong> · Pass: <strong>MevoTech@2026!</strong>
                     </p>
                   </div>
-                  <span className="text-[10px] font-bold bg-neutral-100 group-hover:bg-purple-600 group-hover:text-white px-2 py-1 rounded-md transition-colors">
+                  <span className="text-[10px] font-bold bg-neutral-100 group-hover:bg-orange-600 group-hover:text-white px-2 py-1 rounded-md transition-colors">
                     Fill
                   </span>
                 </button>
@@ -211,7 +211,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToStore }) => {
                   <button
                     type="button"
                     onClick={() => handleFillDemoCredentials('inventory', 'DepotStock@2026!')}
-                    className="text-left p-2 rounded-xl border border-neutral-200 hover:border-purple-500 hover:bg-purple-50/60 transition-colors"
+                    className="text-left p-2 rounded-xl border border-neutral-200 hover:border-orange-500 hover:bg-orange-50/60 transition-colors"
                   >
                     <p className="font-bold text-[11px] text-neutral-900">Depot Stock</p>
                     <p className="text-[10px] text-neutral-500 font-mono">inventory / DepotStock@2026!</p>
@@ -220,7 +220,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToStore }) => {
                   <button
                     type="button"
                     onClick={() => handleFillDemoCredentials('fulfilment', 'Logistics@2026!')}
-                    className="text-left p-2 rounded-xl border border-neutral-200 hover:border-purple-500 hover:bg-purple-50/60 transition-colors"
+                    className="text-left p-2 rounded-xl border border-neutral-200 hover:border-orange-500 hover:bg-orange-50/60 transition-colors"
                   >
                     <p className="font-bold text-[11px] text-neutral-900">Logistics Officer</p>
                     <p className="text-[10px] text-neutral-500 font-mono">fulfilment / Logistics@2026!</p>
@@ -256,58 +256,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToStore }) => {
     );
   }
 
-  // 3. Authenticated: Render Full Admin Console with persistent session header
+  // 3. Authenticated: Render Full Pro Admin Console
   return (
-    <div className="bg-neutral-50 min-h-screen">
-      {/* Top Security & Session Header */}
-      <div className="bg-neutral-950 text-neutral-300 border-b border-neutral-800 px-4 sm:px-6 lg:px-8 py-3">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-3">
-            <img
-              src="/assets/aistudio/Generated_Image_October_29__2026_-_8_40PM_f8f1a10b.png"
-              alt="MEVO TECH"
-              className="w-10 h-7 object-cover rounded-md bg-neutral-900 border border-neutral-700 p-0.5 shrink-0"
-            />
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="font-bold text-white uppercase tracking-wider font-mono text-[11px]">
-                Secured Session Active
-              </span>
-            </div>
-            <span aria-hidden="true" className="text-neutral-700">|</span>
-            <div className="flex items-center gap-1.5 text-neutral-400">
-              <Building2 className="w-3.5 h-3.5 text-purple-400" />
-              <span>Johannesburg Depot Gateway</span>
-            </div>
-            <span aria-hidden="true" className="text-neutral-700 hidden md:inline">|</span>
-            <span className="hidden md:inline text-neutral-400">
-              User: <strong className="text-white">{adminUser?.name}</strong> (<span className="capitalize">{adminUser?.role.replace('_', ' ')}</span>)
-            </span>
-          </div>
-
-          <div className="flex items-center gap-3 self-end sm:self-auto">
-            {onBackToStore && (
-              <button
-                onClick={onBackToStore}
-                className="px-3 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded-lg text-xs font-medium transition-colors"
-              >
-                Storefront Preview
-              </button>
-            )}
-
-            <button
-              onClick={adminLogout}
-              className="px-3 py-1 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-200 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span>Sign Out Admin</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Admin Dashboard */}
-      <AdminDashboard />
+    <div className="bg-[#f8f9fc] min-h-screen">
+      <AdminDashboard onBackToStore={onBackToStore} onSignOut={adminLogout} />
     </div>
   );
 };

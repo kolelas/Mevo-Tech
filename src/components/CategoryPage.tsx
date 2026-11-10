@@ -138,14 +138,14 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
           <nav aria-label="Breadcrumb" className="flex items-center gap-2 overflow-x-auto scrollbar-none py-1">
             <button
               onClick={onBackToHome}
-              className="hover:text-purple-600 transition-colors flex items-center gap-1 font-medium shrink-0"
+              className="hover:text-orange-600 transition-colors flex items-center gap-1 font-medium shrink-0"
             >
               <span>Home</span>
             </button>
             <ChevronRight className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
             <button
               onClick={onBackToHome}
-              className="hover:text-purple-600 transition-colors font-medium shrink-0"
+              className="hover:text-orange-600 transition-colors font-medium shrink-0"
             >
               Categories
             </button>
@@ -155,7 +155,7 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
 
           <button
             onClick={onBackToHome}
-            className="hidden sm:flex items-center gap-1 text-xs font-semibold text-neutral-600 hover:text-purple-600 transition-colors shrink-0"
+            className="hidden sm:flex items-center gap-1 text-xs font-semibold text-neutral-600 hover:text-orange-600 transition-colors shrink-0"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>Back to All Hardware</span>
@@ -172,8 +172,8 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
             {/* Category Meta & Title */}
             <div className="lg:col-span-8 space-y-4">
-              <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-purple-400 uppercase tracking-widest">
-                <span className="flex items-center gap-1.5 bg-purple-500/10 text-purple-400 px-2.5 py-1 rounded-md border border-purple-500/20">
+              <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-orange-400 uppercase tracking-widest">
+                <span className="flex items-center gap-1.5 bg-orange-500/10 text-orange-400 px-2.5 py-1 rounded-md border border-orange-500/20">
                   <CategoryIcon className="w-3.5 h-3.5" />
                   <span>Mevo Official Category</span>
                 </span>
@@ -198,7 +198,7 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
               {/* Category Quick Badges */}
               <div className="pt-2 flex flex-wrap items-center gap-4 text-xs text-neutral-400">
                 <div className="flex items-center gap-1.5">
-                  <Truck className="w-4 h-4 text-purple-400" />
+                  <Truck className="w-4 h-4 text-orange-400" />
                   <span>Free Courier Over R 1,500</span>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -218,7 +218,7 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
                 <span className="text-xs font-bold text-white uppercase tracking-wider">
                   Hardware Specifications
                 </span>
-                <span className="text-[11px] text-purple-400 font-mono font-semibold">
+                <span className="text-[11px] text-orange-400 font-mono font-semibold">
                   Sandton Verified
                 </span>
               </div>
@@ -275,7 +275,7 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
                   type="checkbox"
                   checked={inStockOnly}
                   onChange={(e) => setInStockOnly(e.target.checked)}
-                  className="rounded border-neutral-300 text-purple-600 focus:ring-purple-500 w-3.5 h-3.5"
+                  className="rounded border-neutral-300 text-orange-600 focus:ring-orange-500 w-3.5 h-3.5"
                 />
                 <span>In Stock Only</span>
               </label>
@@ -371,7 +371,7 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
                   type="checkbox"
                   checked={inStockOnly}
                   onChange={(e) => setInStockOnly(e.target.checked)}
-                  className="rounded border-neutral-300 text-purple-600 focus:ring-purple-500"
+                  className="rounded border-neutral-300 text-orange-600 focus:ring-orange-500"
                 />
                 <span>In Stock at Sandton Only</span>
               </label>
@@ -379,7 +379,7 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
               {hasActiveFilters && (
                 <button
                   onClick={clearAllFilters}
-                  className="text-xs text-purple-600 font-semibold hover:underline"
+                  className="text-xs text-orange-600 font-semibold hover:underline"
                 >
                   Clear All
                 </button>
@@ -409,7 +409,7 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
           {hasActiveFilters && (
             <button
               onClick={clearAllFilters}
-              className="text-purple-600 hover:text-purple-700 font-medium hover:underline flex items-center gap-1"
+              className="text-orange-600 hover:text-orange-700 font-medium hover:underline flex items-center gap-1"
             >
               <span>Reset all filters</span>
             </button>
@@ -441,7 +441,7 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
             </p>
             <button
               onClick={clearAllFilters}
-              className="px-4 py-2 bg-neutral-900 text-white rounded-lg text-xs font-semibold hover:bg-purple-600 transition-colors"
+              className="px-4 py-2 bg-neutral-900 text-white rounded-lg text-xs font-semibold hover:bg-orange-600 transition-colors"
             >
               Reset Category Filters
             </button>
@@ -461,7 +461,7 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
         {/* 5. Category-Specific South African Buying Guide & FAQ Accordion */}
         <section className="mt-16 bg-white rounded-2xl border border-neutral-200 p-6 sm:p-10 shadow-xs">
           <div className="max-w-3xl">
-            <div className="flex items-center gap-2 text-xs font-bold text-purple-600 uppercase tracking-widest mb-2">
+            <div className="flex items-center gap-2 text-xs font-bold text-orange-600 uppercase tracking-widest mb-2">
               <HelpCircle className="w-4 h-4" />
               <span>South African Hardware Advisory</span>
             </div>
@@ -526,16 +526,16 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
                     onNavigateCategory(other.slug);
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                   }}
-                  className="group bg-white hover:bg-neutral-50 border border-neutral-200 rounded-xl p-4 text-left transition-all hover:border-purple-500 hover:shadow-sm flex flex-col justify-between"
+                  className="group bg-white hover:bg-neutral-50 border border-neutral-200 rounded-xl p-4 text-left transition-all hover:border-orange-500 hover:shadow-sm flex flex-col justify-between"
                 >
                   <div className="flex items-center justify-between mb-3">
-                    <div className="w-8 h-8 rounded-lg bg-neutral-100 group-hover:bg-purple-50 text-neutral-700 group-hover:text-purple-600 flex items-center justify-center transition-colors">
+                    <div className="w-8 h-8 rounded-lg bg-neutral-100 group-hover:bg-orange-50 text-neutral-700 group-hover:text-orange-600 flex items-center justify-center transition-colors">
                       <OtherIcon className="w-4 h-4" />
                     </div>
-                    <ChevronRight className="w-3.5 h-3.5 text-neutral-400 group-hover:text-purple-600 group-hover:translate-x-0.5 transition-all" />
+                    <ChevronRight className="w-3.5 h-3.5 text-neutral-400 group-hover:text-orange-600 group-hover:translate-x-0.5 transition-all" />
                   </div>
                   <div>
-                    <h4 className="text-xs font-bold text-neutral-900 group-hover:text-purple-600 transition-colors line-clamp-1">
+                    <h4 className="text-xs font-bold text-neutral-900 group-hover:text-orange-600 transition-colors line-clamp-1">
                       {other.name}
                     </h4>
                     <p className="text-[11px] text-neutral-500 mt-0.5 line-clamp-1">
