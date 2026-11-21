@@ -1023,19 +1023,24 @@ apiRouter.get('/customer/export-data', (req: Request, res: Response) => {
 // POPIA Section 14 Right to be Forgotten (Account Deletion & Data Purge)
 apiRouter.post('/customer/delete-account', (req: Request, res: Response) => {
   try {
-    const { customerId, confirmation } = req.body;
-    if (!customerId || confirmation !== 'PERMANENTLY_DELETE') {
+    const requester = getRequesterContext(req);
+    const customerId = requester.authenticatedCustomerId;
+    const { confirmation } = req.body || {};
+    if (!customerId) {
+      return res.status(401).json({ success: false, error: 'A valid customer session is required.' });
+    }
+    if (confirmation !== 'PERMANENTLY_DELETE') {
       return res.status(400).json({
         success: false,
-        error: 'Confirmation string "PERMANENTLY_DELETE" and customerId required to purge account',
+        error: 'Confirmation string "PERMANENTLY_DELETE" required to purge account',
       });
     }
 
-    // Principle 5: Check who owns it before update or delete
+    // Target account is derived exclusively from the verified session.
     if (!verifyCustomerOwnership(req, customerId)) {
       return res.status(403).json({
         success: false,
-        error: 'Access denied: You can only delete your own customer account (Ownership check enforced).',
+        error: 'Access denied: You can only delete your own customer account.',
       });
     }
 
