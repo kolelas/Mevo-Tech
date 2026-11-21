@@ -16,10 +16,10 @@ Scope: backend, customer account workspace, and security. The storefront is expl
 - Customer profile updates now use a strict allowlist (name and phone only), bounded string values, and trim normalization; unknown fields are discarded.
 
 ## Remaining high-risk work (not yet complete)
-- The API currently exposes no dedicated admin router; administrative management functions may be client/database-layer workflows and must be mapped and moved behind server-side authorization before production.
+- Protected administrator routes now exist for session/role management, PostgreSQL-backed catalogue and inventory reads, transactional product edits, and stock adjustments. Order fulfilment and customer-support case management APIs remain outstanding.
 1. Durable webhook idempotency: persist provider event/transaction IDs with uniqueness constraints and transactionally update order/payment/stock state. Current in-memory order state cannot provide cross-process or restart guarantees.
 2. Runtime persistence: the PostgreSQL schema foundation exists, but the runtime database implementation still uses in-memory Maps. Migration is not complete.
-3. Admin authorization: audit all admin endpoints and enforce server-side roles/permissions. Client UI role flags are not authorization.
+3. Admin authorization: continue mapping legacy admin surfaces and migrate each operation behind the new verified-identity, database-role and permission middleware. Client UI role flags are not authorization.
 4. Authentication: opportunistic legacy plaintext-password upgrade on successful login exists in the in-memory authentication path; confirm coverage against persistent production records and eliminate legacy comparison once migration is complete. Review token expiry, revocation, and email-change flows.
 5. Checkout: transactional stock reservation/order creation, coupon usage, pricing, and shipping validations.
 6. Reviews: unique per-customer/product constraints, moderation, and verified-purchase criteria tied to successful payment/delivery. Current API check is a preliminary control.
@@ -31,12 +31,12 @@ Scope: backend, customer account workspace, and security. The storefront is expl
 
 ## Batch implementation groundwork (migration 003)
 - Added additive PostgreSQL tables for managed admin roles, unique provider webhook event IDs/transaction IDs, payment-attempt ledger, inventory reservations and order-status event history.
-- Migration 003 is not applied, and runtime code is not switched to PostgreSQL. No production credentials or schema changes were performed.
+- Migrations 001–005 are exercised in disposable CI PostgreSQL only; they have not been applied to production, and runtime commerce code is not switched to PostgreSQL. No production credentials or schema changes were performed.
 - The payment webhook endpoint is not yet using the new event ledger; event deduplication/processing must be implemented in a transaction and tested before production.
-- Admin role table is groundwork only; API routes currently do not expose an admin management router. The frontend's admin path is not proof of authorization. Server-side admin management must be designed and wired to verified identity/custom claims and DB-backed roles.
+- The administrator API is now wired to Firebase Admin ID-token verification and database-backed roles. Current PostgreSQL catalogue/inventory routes are permission-gated; continue migrating remaining admin operations individually. The frontend's admin path is not proof of authorization.
 - Checkout/stock/coupon/payment transitions remain in-memory and non-transactional until the runtime migration is complete.
 - Provider-specific webhook event IDs need reliable extraction from each adapter and reconciliation strategy before ledger adoption.
-- Review constraints and migration tests remain unimplemented at runtime; SQL groundwork in earlier migration is not activated.
+- Review constraints remain SQL groundwork and are not wired to the active Maps runtime.
 
 ## Firestore rules hardening in this pass\n- Admin checks now require verified email and support Firebase custom role claims (`owner`/`admin`) while retaining the legacy email allowlist for transition. This hybrid is transitional, not the final admin identity design.\n- Price-alert creation is now limited to signed-in Firebase users with verified email, matching the authenticated token email, a bounded product ID, an allowlisted payload shape, and ACTIVE initial state.\n- Customers can delete their own price-alert documents; admin updates remain restricted.\n- This rules patch has not been deployed or emulator-tested. The runtime/API may not use Firestore for these records.\n\n## Additional migration foundation committed
 - Added `002_webhook_review_constraints.sql`: a unique provider/event ID table to support durable webhook idempotency and persistent review constraints (unique customer/product/order, rating bounds, moderation state).
@@ -74,7 +74,7 @@ Scope: backend, customer account workspace, and security. The storefront is expl
 - Verifies the timestamped HMAC-SHA512 over `timestamp + "." + raw body`, enforces Paystack's ±300-second window, supports multiple `v1` signatures during secret rotation, and uses constant-time comparison.
 - If the current-format header is present but invalid, the adapter does not fall back to the deprecated header (prevents signature downgrade). If it is absent, legacy `X-Paystack-Signature` verification remains available using `PAYSTACK_SECRET_KEY` for migration.
 - Corrected adapter test import paths and added tests for the timestamped format, stale timestamps, malformed/duplicate timestamp fields, and downgrade resistance. The adapter test file is now included in the package test script.
-- The test suite has not yet been run. This does not implement durable event idempotency, database transactions, or provider reconciliation. Configure the webhook signing secret only in the deployment environment after verifying the provider's test/live mode; no credentials were changed here.
+- Later CI runs have verified the adapter tests. This does not implement durable event idempotency, database transactions, or provider reconciliation. Configure the webhook signing secret only in the deployment environment after verifying the provider's test/live mode; no credentials were changed here.
 
 
 ## Payment event and currency safeguards (latest)
@@ -136,7 +136,7 @@ Scope: backend, customer account workspace, and security. The storefront is expl
 - Database errors, missing role records, unverified email, identity mismatch, disabled roles, and unknown role values all fail closed.
 - Added a least-privilege permission matrix for owner, admin, inventory manager, fulfilment manager, and customer support. Only the owner may manage admin roles.
 - Added unit coverage for identity validation, parameterization, fail-closed behavior, and role permissions, plus a disposable-PostgreSQL integration test for enabled/disabled role lookup and identity mismatch.
-- This is an authorization service foundation, not yet attached to HTTP routes. No current admin UI flag or customer JWT is accepted as admin proof. Before any admin route is enabled, its authentication middleware must validate the actual identity-provider token server-side and pass the verified subject/email into this service. No admin endpoint, production role, or live database was changed.
+- This authorization service is attached to the protected administrator HTTP router. No current admin UI flag or customer JWT is accepted as admin proof. Before any admin route is enabled, its authentication middleware must validate the actual identity-provider token server-side and pass the verified subject/email into this service. No admin endpoint, production role, or live database was changed.
 
 
 ## Protected administrator API routes
@@ -145,7 +145,7 @@ Scope: backend, customer account workspace, and security. The storefront is expl
 - Admin endpoints fail closed when PostgreSQL is not configured, Firebase credentials are missing/invalid, the Firebase token is invalid/revoked, the email is unverified, or no enabled database role matches the verified UID and email.
 - Firebase Admin credentials must be supplied through the hosting environment (service-account JSON or application-default/workload identity). No credentials are committed.
 - Added HTTP-level tests for missing database, invalid/missing/unregistered tokens, owner-only role grants, and invalid role input.
-- The role-management endpoint is the first active administrator route. Other existing business/admin data operations have not been exposed through this router and still require individual permission-gated route implementations before use.
+- The router now also exposes permission-gated PostgreSQL catalogue and inventory reads, transactional product edits, and stock adjustments. Order fulfilment and customer-support case operations still require individual implementations.
 - The server creates a PostgreSQL pool only when `DATABASE_URL` is configured. This does not switch the existing Maps-based commerce runtime or apply migrations.
 
 
@@ -158,7 +158,7 @@ Scope: backend, customer account workspace, and security. The storefront is expl
 
 ## Protected administrator data reads
 
-Added permission-checked PostgreSQL read routes for the catalogue (`catalog.read`) and inventory summary/movement ledger (`inventory.read`). The routes use the additive `mevo_products` and `mevo_inventory_movements` tables, parameterized filters, bounded pagination, and narrow response projections. They return PostgreSQL as the explicit source and do not fall back to Maps. This is not a persistence cutover: current customer/storefront runtime remains Maps-backed, and no catalogue/inventory write route or production migration is enabled.
+Added permission-checked PostgreSQL read routes for the catalogue (`catalog.read`) and inventory summary/movement ledger (`inventory.read`). The routes use the additive `mevo_products` and `mevo_inventory_movements` tables, parameterized filters, bounded pagination, and narrow response projections. They return PostgreSQL as the explicit source and do not fall back to Maps. This is not a persistence cutover: current customer/storefront runtime remains Maps-backed.
 
 
 ## Transactional admin mutations
