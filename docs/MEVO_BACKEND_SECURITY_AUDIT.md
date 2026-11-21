@@ -52,3 +52,10 @@ Scope: backend, customer account workspace, and security. The storefront is expl
 - Paystack webhook validation now fails closed if the secret is not configured; previously the unconfigured branch accepted the payload as valid.
 - Ozow and crypto webhook adapters now report invalid/unverified webhook authentication, preventing the API handler from accepting their payloads as verified payment notifications. These providers require real provider verification/reconciliation before being enabled for live checkout.
 - These code changes are not a substitute for provider-specific integration tests, raw-body handling, official verification, or reconciliation. No payment configuration or production environment was changed.
+
+
+## Paystack adapter hardening and tests (follow-up)
+- Paystack configuration no longer uses a built-in sample secret as a fallback. A blank secret remains unconfigured; sample/placeholder-like secrets are not treated as configured.
+- Paystack HMAC-SHA512 adapter comparison uses format validation and constant-time comparison.
+- Added adapter tests for valid/forged/malformed Paystack signatures and fail-closed unconfigured behavior, and for Ozow/crypto's currently unverified status.
+- Tests are added but have not been executed in this environment. Express raw-body capture, provider reconciliation, and end-to-end tests remain outstanding.
