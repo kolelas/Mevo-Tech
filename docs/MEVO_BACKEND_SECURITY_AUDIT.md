@@ -119,3 +119,12 @@ Scope: backend, customer account workspace, and security. The storefront is expl
 - Added SQL integration assertions for initial claims, concurrent delivery, payload digest mismatch, lease-token ownership, completed-event replay, provider transaction collision, and expired-lease recovery/attempt counting.
 - CI now provisions a disposable PostgreSQL 16 service, applies migrations 003 and 004, and runs the SQL assertions before the TypeScript/test/build checks.
 - This tests the migration foundation in CI only. It does not apply any migration to a live database, wire PostgreSQL into the application runtime, or make webhook replay protection active in production. Runtime transaction integration remains a separate milestone.
+
+
+## PostgreSQL runtime foundation (opt-in; not yet the commerce system of record)
+- Added `src/server/postgres.ts` with validated `DATABASE_URL` parsing, a bounded connection pool, safe idle-client error logging, a connectivity probe, and a transaction helper that commits on success and attempts rollback on failure.
+- Production TLS certificate verification cannot be disabled through `PGSSL_REJECT_UNAUTHORIZED=false`. TLS mode can be explicitly configured with `PGSSLMODE`; do not disable TLS for production database connections.
+- Added the `pg` runtime dependency and PostgreSQL type definitions.
+- Added integration tests that use a disposable PostgreSQL database to verify connectivity, transaction commit, and rollback. CI supplies its isolated PostgreSQL service through `TEST_DATABASE_URL`.
+- The pool module is infrastructure only at this stage: it is not imported by the current API or Maps-backed database implementation. No customer, order, inventory, payment, or admin data is being written to PostgreSQL yet. Do not configure production `DATABASE_URL` expecting persistence until repositories and dual-read/write migration controls are implemented and validated.
+- Existing seeded/in-memory Maps remain the active runtime. The next migration step is repository-by-repository persistence with explicit schema mapping and transactional checkout/inventory/webhook boundaries; avoid a wholesale switch that could silently lose seeded or live data.
