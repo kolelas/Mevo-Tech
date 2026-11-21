@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'crypto';
 import { PaystackProvider } from './paystack';
+import { PayFastProvider } from './payfast';
 import { OzowProvider } from './ozow';
 import { CryptoPaymentProvider } from './crypto';
 import { PayflexProvider } from './payflex';
@@ -90,4 +91,33 @@ test('Ozow, crypto, and Payflex webhook verification remain fail-closed', async 
   const payflex = await new PayflexProvider().verifyWebhook({}, payload);
   assert.equal(payflex.isValid, false);
   assert.equal(payflex.signatureVerified, false);
+});
+
+test('PayFast rejects built-in/sample configuration and validates signatures in constant time', async () => {
+  const unconfigured = new PayFastProvider();
+  assert.equal(unconfigured.isConfigured(), false);
+  const payload = {
+    m_payment_id: 'MEV-PF-001',
+    pf_payment_id: '123456',
+    payment_status: 'COMPLETE',
+    amount_gross: '100.00',
+  };
+  assert.equal((await unconfigured.verifyWebhook({}, payload)).isValid, false);
+
+  const provider = new PayFastProvider({
+    merchantId: 'merchant-live-id',
+    merchantKey: 'merchant-live-key',
+    passphrase: 'private-passphrase',
+  });
+  assert.equal(provider.isConfigured(), true);
+  const signed = { ...payload };
+  signed.signature = provider.generateSignature(payload, 'private-passphrase');
+  const verified = await provider.verifyWebhook({}, signed);
+  assert.equal(verified.isValid, true);
+  assert.equal(verified.signatureVerified, true);
+  assert.equal(verified.orderReference, 'MEV-PF-001');
+  assert.equal(verified.amountCents, 10000);
+
+  const forged = { ...signed, signature: '0'.repeat(32) };
+  assert.equal((await provider.verifyWebhook({}, forged)).isValid, false);
 });
