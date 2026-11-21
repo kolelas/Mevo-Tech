@@ -25,8 +25,9 @@ async function withServer(router: ReturnType<typeof createAdminRouter>, run: (ba
   try {
     await run(`http://127.0.0.1:${address.port}`);
   } finally {
+    const closed = once(server, 'close');
     server.close();
-    await once(server, 'close');
+    await closed;
   }
 }
 
