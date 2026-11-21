@@ -50,11 +50,11 @@ async function startServer() {
   // Apply general API rate limiting
   app.use('/api', apiRateLimiter);
 
-  // Mount API router
-  app.use('/api', apiRouter);
-  // Admin endpoints are isolated from customer JWTs and require Firebase ID-token
-  // verification plus the PostgreSQL admin_roles registry.
+  // Mount the isolated admin router BEFORE the general API router because
+  // apiRouter ends with a catch-all 404 handler.
+  // Admin endpoints require Firebase ID-token verification plus PostgreSQL roles.
   app.use('/api/admin', createAdminRouter(postgresPool));
+  app.use('/api', apiRouter);
 
   // OAuth popup callback endpoint (postMessage cross-origin handshake)
   app.get(['/auth/callback', '/auth/callback/'], (_req, res) => {
