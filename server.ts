@@ -6,6 +6,7 @@ import { apiRouter } from './src/server/api';
 import { apiRateLimiter } from './src/server/security';
 import { createAdminRouter } from './src/server/adminRoutes';
 import { createPostgresPool, getPostgresConfig } from './src/server/postgres';
+import { createCommerceRouter } from './src/server/commerceRoutes';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -53,6 +54,9 @@ async function startServer() {
   // apiRouter ends with a catch-all 404 handler.
   // Admin endpoints require Firebase ID-token verification plus PostgreSQL roles.
   app.use('/api/admin', createAdminRouter(postgresPool));
+  // PostgreSQL owns the migrated catalogue and stock-reservation endpoints.
+  // These routes are mounted before the legacy router so there is no Map fallback.
+  app.use('/api', createCommerceRouter(postgresPool));
   app.use('/api', apiRouter);
 
   // OAuth popup callback endpoint (postMessage cross-origin handshake)
