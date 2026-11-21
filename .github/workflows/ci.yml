@@ -58,6 +58,8 @@ jobs:
         run: |
           psql -v ON_ERROR_STOP=1 -f src/server/migrations/003_persistence_rbac_payment_ledger.sql
           psql -v ON_ERROR_STOP=1 -f src/server/migrations/004_payment_webhook_leases.sql
+          psql -v ON_ERROR_STOP=1 -f src/server/migrations/005_admin_owner_guard.sql
+          psql -v ON_ERROR_STOP=1 -f tests/sql/admin_owner_guard.sql
           psql -v ON_ERROR_STOP=1 -f tests/sql/payment_webhook_leases.sql
 
       - name: TypeScript validation
