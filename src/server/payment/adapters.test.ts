@@ -110,7 +110,7 @@ test('PayFast rejects built-in/sample configuration and validates signatures in 
     passphrase: 'private-passphrase',
   });
   assert.equal(provider.isConfigured(), true);
-  const signed = { ...payload };
+  const signed: Record<string, string> = { ...payload };
   signed.signature = provider.generateSignature(payload, 'private-passphrase');
   const verified = await provider.verifyWebhook({}, signed);
   assert.equal(verified.isValid, true);
