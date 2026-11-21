@@ -154,3 +154,8 @@ Scope: backend, customer account workspace, and security. The storefront is expl
 - Added an owner-only endpoint to disable an administrator role. The endpoint maps the database's last-owner constraint to HTTP 409 and uses a parameterized update.
 - Added PostgreSQL integration assertions for the single-owner and multiple-owner cases. CI applies migration 005 and executes these assertions against its disposable PostgreSQL service.
 - Initial owner provisioning remains a deliberate manual operation after Firebase UID/email verification; no default owner, seeded identity, or backdoor is included.
+
+
+## Protected administrator data reads
+
+Added permission-checked PostgreSQL read routes for the catalogue (`catalog.read`) and inventory summary/movement ledger (`inventory.read`). The routes use the additive `mevo_products` and `mevo_inventory_movements` tables, parameterized filters, bounded pagination, and narrow response projections. They return PostgreSQL as the explicit source and do not fall back to Maps. This is not a persistence cutover: current customer/storefront runtime remains Maps-backed, and no catalogue/inventory write route or production migration is enabled.
