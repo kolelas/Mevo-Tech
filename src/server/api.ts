@@ -806,7 +806,10 @@ apiRouter.post('/orders/lookup', emailFormRateLimiter, (req: Request, res: Respo
           variantTitle: item.variantTitle,
           quantity: item.quantity,
         })),
-        statusHistory: order.statusHistory,
+        statusHistory: order.statusHistory.map((entry) => ({
+          status: entry.status,
+          timestamp: entry.timestamp,
+        })),
       },
     });
   } catch (error: any) {
