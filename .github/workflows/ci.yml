@@ -77,5 +77,8 @@ jobs:
       - name: Production build
         run: bun run build
 
+      - name: Validate Cloudflare Worker bundle and configuration
+        run: bunx wrangler deploy --dry-run --outdir .wrangler/deploy
+
       - name: Build production container
         run: docker build --tag mevo-tech-ci .
