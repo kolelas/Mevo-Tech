@@ -484,3 +484,22 @@ test('order listing is PostgreSQL-backed and bounded', async () => {
     assert.equal(invalid.status, 400);
   });
 });
+
+
+test('support case assignment rejects inactive administrators', async () => {
+  const fake = makeTransactionalPool('customer_support', async (sql) => {
+    if (sql.startsWith('SELECT id, status FROM mevo_support_cases')) return { rows: [{ id: 'case-2', status: 'open' }] };
+    if (sql.includes('FROM admin_roles')) return { rows: [] };
+    throw new Error('No case update should occur');
+  });
+  const router = createAdminRouter(fake.pool, async () => identity);
+  await withServer(router, async (base) => {
+    const response = await fetch(`${base}/admin/support/cases/case-2`, {
+      method: 'PATCH',
+      headers: { Authorization: 'Bearer verified', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assignedTo: 'disabled-admin' }),
+    });
+    assert.equal(response.status, 400);
+    assert.ok(!fake.transactionStatements.some((sql) => sql.startsWith('UPDATE mevo_support_cases')));
+  });
+});
