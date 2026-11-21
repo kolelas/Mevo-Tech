@@ -24,8 +24,10 @@ export class PaystackProvider implements IPaymentProvider {
   }
 
   verifySignature(rawBody: string, signature: string): boolean {
-    const hash = crypto.createHmac('sha512', this.secretKey).update(rawBody).digest('hex');
-    return hash === signature;
+    if (!/^[a-f0-9]{128}$/i.test(signature)) return false;
+    const expected = crypto.createHmac('sha512', this.secretKey).update(rawBody).digest();
+    const received = Buffer.from(signature, 'hex');
+    return received.length === expected.length && crypto.timingSafeEqual(expected, received);
   }
 
   async initiatePayment(params: PaymentInitiateParams): Promise<PaymentInitiateResult> {
