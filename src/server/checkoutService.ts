@@ -42,6 +42,19 @@ export class PostgresCheckoutService {
     }
 
     return withPostgresTransaction(this.pool,async(client)=>{
+      // Release expired holds before checking availability. Reservation state and
+      // inventory counters are changed atomically under row locks.
+      const expired=await client.query(
+        "SELECT id,product_id,variant_id,quantity FROM mevo_stock_reservations WHERE status='ACTIVE' AND expires_at<=now() FOR UPDATE SKIP LOCKED",
+      );
+      for(const hold of expired.rows) {
+        const table=hold.variant_id?'mevo_product_variants':'mevo_products';
+        await client.query(
+          'UPDATE '+table+' SET stock_reserved=GREATEST(0,stock_reserved-$1),updated_at=now() WHERE id=$2',
+          [hold.quantity,hold.variant_id||hold.product_id],
+        );
+        await client.query("UPDATE mevo_stock_reservations SET status='EXPIRED' WHERE id=$1",[hold.id]);
+      }
       const customerResult=await client.query(
         'SELECT id,email,display_name,phone,status,email_verified,restriction_reason FROM mevo_customers WHERE id=$1 FOR UPDATE',
         [input.customerId],
@@ -124,6 +137,11 @@ export class PostgresCheckoutService {
         } else {
           throw new CheckoutError('The discount code is invalid, expired or no longer available.',409);
         }
+      }
+
+      if(coupon) {
+        const subtotal=snapshots.reduce((sum,item)=>sum+item.totalCents,0);
+        if(subtotal<coupon.minOrderCents) throw new CheckoutError('The order does not meet the minimum spend for this discount code.',409);
       }
 
       const totals=calculateCartTotals({
