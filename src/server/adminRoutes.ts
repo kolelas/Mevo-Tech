@@ -63,6 +63,115 @@ export function createAdminRouter(
 
   router.use(authenticateAdmin);
 
+
+  const requirePermission = (permission: Parameters<typeof hasAdminPermission>[1]): RequestHandler =>
+    (_req, res, next) => {
+      const role = res.locals.adminRole as AdminRole | undefined;
+      if (!hasAdminPermission(role, permission)) {
+        res.status(403).json({ success: false, error: 'Your administrator role does not permit this operation.' });
+        return;
+      }
+      next();
+    };
+
+  // These endpoints read only the PostgreSQL commerce foundation. They do not
+  // fall back to the legacy in-memory Maps runtime.
+  router.get('/catalog/products', requirePermission('catalog.read'), (req, res) => {
+    void (async () => {
+      const rawLimit = req.query.limit;
+      const rawOffset = req.query.offset;
+      const limit = rawLimit === undefined ? 25 : Number(rawLimit);
+      const offset = rawOffset === undefined ? 0 : Number(rawOffset);
+      const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+
+      if (
+        !Number.isInteger(limit) || limit < 1 || limit > 100 ||
+        !Number.isInteger(offset) || offset < 0 || offset > 1_000_000 ||
+        (req.query.search !== undefined && (typeof req.query.search !== 'string' || search.length > 100))
+      ) {
+        res.status(400).json({ success: false, error: 'Invalid catalogue pagination or search parameters.' });
+        return;
+      }
+
+      try {
+        const pattern = search ? `%${search.replace(/[\\%_]/g, '\\  router.get('/session', (_req, res) => {')}%` : null;
+        const result = await pool!.query(
+          `SELECT id, sku, slug, name, active, currency, price_cents,
+                  promotional_price_cents, stock_on_hand, stock_reserved,
+                  (stock_on_hand - stock_reserved) AS available_stock,
+                  created_at, updated_at
+             FROM mevo_products
+            WHERE ($1::text IS NULL OR name ILIKE $1 ESCAPE E'\\\\' OR sku ILIKE $1 ESCAPE E'\\\\')
+            ORDER BY updated_at DESC, id ASC
+            LIMIT $2 OFFSET $3`,
+          [pattern, limit, offset],
+        );
+        const count = await pool!.query(
+          `SELECT COUNT(*)::bigint AS total
+             FROM mevo_products
+            WHERE ($1::text IS NULL OR name ILIKE $1 ESCAPE E'\\\\' OR sku ILIKE $1 ESCAPE E'\\\\')`,
+          [pattern],
+        );
+        res.json({
+          success: true,
+          source: 'postgresql',
+          pagination: { limit, offset, total: Number(count.rows[0]?.total ?? 0) },
+          products: result.rows,
+        });
+      } catch {
+        res.status(503).json({ success: false, error: 'The PostgreSQL catalogue is temporarily unavailable.' });
+      }
+    })();
+  });
+
+  router.get('/inventory/summary', requirePermission('inventory.read'), (_req, res) => {
+    void (async () => {
+      try {
+        const result = await pool!.query(
+          `SELECT COUNT(*)::bigint AS product_count,
+                  COUNT(*) FILTER (WHERE active = TRUE)::bigint AS active_product_count,
+                  COALESCE(SUM(stock_on_hand), 0)::bigint AS units_on_hand,
+                  COALESCE(SUM(stock_reserved), 0)::bigint AS units_reserved,
+                  COALESCE(SUM(stock_on_hand - stock_reserved), 0)::bigint AS units_available,
+                  COUNT(*) FILTER (WHERE active = TRUE AND stock_on_hand - stock_reserved = 0)::bigint AS active_out_of_stock_count
+             FROM mevo_products`,
+        );
+        res.json({ success: true, source: 'postgresql', inventory: result.rows[0] ?? {} });
+      } catch {
+        res.status(503).json({ success: false, error: 'The PostgreSQL inventory service is temporarily unavailable.' });
+      }
+    })();
+  });
+
+  router.get('/inventory/movements', requirePermission('inventory.read'), (req, res) => {
+    void (async () => {
+      const rawLimit = req.query.limit;
+      const limit = rawLimit === undefined ? 50 : Number(rawLimit);
+      const productId = typeof req.query.productId === 'string' ? req.query.productId.trim() : '';
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100 ||
+          (req.query.productId !== undefined && (!productId || productId.length > 128))) {
+        res.status(400).json({ success: false, error: 'Invalid inventory movement filters.' });
+        return;
+      }
+
+      try {
+        const result = await pool!.query(
+          `SELECT m.id, m.product_id, p.sku, p.name AS product_name,
+                  m.movement_type, m.quantity, m.reference, m.actor, m.created_at
+             FROM mevo_inventory_movements m
+             JOIN mevo_products p ON p.id = m.product_id
+            WHERE ($1::text IS NULL OR m.product_id = $1)
+            ORDER BY m.created_at DESC, m.id DESC
+            LIMIT $2`,
+          [productId || null, limit],
+        );
+        res.json({ success: true, source: 'postgresql', movements: result.rows });
+      } catch {
+        res.status(503).json({ success: false, error: 'The PostgreSQL inventory ledger is temporarily unavailable.' });
+      }
+    })();
+  });
+
   router.get('/session', (_req, res) => {
     const role = res.locals.adminRole as AdminRole;
     const permissions = [
