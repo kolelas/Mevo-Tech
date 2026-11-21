@@ -67,3 +67,11 @@ Scope: backend, customer account workspace, and security. The storefront is expl
 - Paystack signature format validation and timing-safe comparison are implemented in the adapter.
 - This is legacy `X-Paystack-Signature` verification; migration to the current signing-secret header format and timestamp/replay validation remains outstanding. Provider-event idempotency and transactional processing also remain outstanding.
 - These code changes are not tested or deployed in this environment.
+
+
+## Current Paystack signing-secret verification (latest)
+- Added support for the current `Paystack-Signature` header using the `PAYSTACK_WEBHOOK_SECRET` environment variable (must be the full `whsec_...` value).
+- Verifies the timestamped HMAC-SHA512 over `timestamp + "." + raw body`, enforces Paystack's ±300-second window, supports multiple `v1` signatures during secret rotation, and uses constant-time comparison.
+- If the current-format header is present but invalid, the adapter does not fall back to the deprecated header (prevents signature downgrade). If it is absent, legacy `X-Paystack-Signature` verification remains available using `PAYSTACK_SECRET_KEY` for migration.
+- Corrected adapter test import paths and added tests for the timestamped format, stale timestamps, malformed/duplicate timestamp fields, and downgrade resistance. The adapter test file is now included in the package test script.
+- The test suite has not yet been run. This does not implement durable event idempotency, database transactions, or provider reconciliation. Configure the webhook signing secret only in the deployment environment after verifying the provider's test/live mode; no credentials were changed here.
