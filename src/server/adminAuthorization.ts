@@ -18,7 +18,8 @@ export type AdminPermission =
   | 'orders.read'
   | 'orders.fulfil'
   | 'customers.read'
-  | 'customers.support';
+  | 'customers.support'
+  | 'audit.read';
 
 export interface VerifiedAdminIdentity {
   /** Stable subject from a server-verified identity-provider token. */
@@ -79,6 +80,7 @@ const ROLE_PERMISSIONS: Record<AdminRole, ReadonlySet<AdminPermission>> = {
     'orders.fulfil',
     'customers.read',
     'customers.support',
+    'audit.read',
   ]),
   admin: new Set([
     'catalog.read',
@@ -89,6 +91,7 @@ const ROLE_PERMISSIONS: Record<AdminRole, ReadonlySet<AdminPermission>> = {
     'orders.fulfil',
     'customers.read',
     'customers.support',
+    'audit.read',
   ]),
   inventory_manager: new Set([
     'catalog.read',
