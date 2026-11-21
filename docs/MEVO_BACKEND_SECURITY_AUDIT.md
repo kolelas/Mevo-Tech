@@ -137,3 +137,13 @@ Scope: backend, customer account workspace, and security. The storefront is expl
 - Added a least-privilege permission matrix for owner, admin, inventory manager, fulfilment manager, and customer support. Only the owner may manage admin roles.
 - Added unit coverage for identity validation, parameterization, fail-closed behavior, and role permissions, plus a disposable-PostgreSQL integration test for enabled/disabled role lookup and identity mismatch.
 - This is an authorization service foundation, not yet attached to HTTP routes. No current admin UI flag or customer JWT is accepted as admin proof. Before any admin route is enabled, its authentication middleware must validate the actual identity-provider token server-side and pass the verified subject/email into this service. No admin endpoint, production role, or live database was changed.
+
+
+## Protected administrator API routes
+- Added Firebase Admin SDK ID-token verification for administrator sessions. Verification checks revocation and requires Firebase's `email_verified` claim; customer-session JWTs and client-supplied role flags are not accepted.
+- Added isolated `/api/admin/session` and owner-only `POST /api/admin/roles` routes. Role assignment uses parameterized SQL and records the verified actor's Firebase UID as `granted_by`.
+- Admin endpoints fail closed when PostgreSQL is not configured, Firebase credentials are missing/invalid, the Firebase token is invalid/revoked, the email is unverified, or no enabled database role matches the verified UID and email.
+- Firebase Admin credentials must be supplied through the hosting environment (service-account JSON or application-default/workload identity). No credentials are committed.
+- Added HTTP-level tests for missing database, invalid/missing/unregistered tokens, owner-only role grants, and invalid role input.
+- The role-management endpoint is the first active administrator route. Other existing business/admin data operations have not been exposed through this router and still require individual permission-gated route implementations before use.
+- The server creates a PostgreSQL pool only when `DATABASE_URL` is configured. This does not switch the existing Maps-based commerce runtime or apply migrations.
