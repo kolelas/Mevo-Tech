@@ -733,57 +733,75 @@ apiRouter.post('/payments/:provider/webhook', async (req: Request, res: Response
   }
 });
 
-// Developer sandbox simulated webhook for instant verification in dev
-apiRouter.post('/payments/simulate-webhook', async (req: Request, res: Response) => {
-  // Simulation must never be available in production deployments.
-  if (process.env.NODE_ENV === 'production') {
+// Explicitly opt-in developer sandbox. It is disabled unless the environment
+// operator enables it, and callers must own the order they are simulating.
+apiRouter.post('/payments/simulate-webhook', checkoutRateLimiter, (req: Request, res: Response) => {
+  if (
+    process.env.NODE_ENV === 'production' ||
+    process.env.MEVO_ENABLE_PAYMENT_SIMULATOR !== 'true'
+  ) {
     return res.status(404).json({ success: false, error: 'Not found' });
   }
+
   try {
-    const { orderReference, outcome, provider } = req.body;
-    const order = db.getOrderByReference(orderReference);
+    const requester = getRequesterContext(req);
+    const { orderReference, outcome } = req.body || {};
+    if (typeof orderReference !== 'string' || !['SUCCESS', 'FAIL', 'CANCEL'].includes(outcome)) {
+      return res.status(400).json({ success: false, error: 'Invalid simulation request.' });
+    }
+
+    const order = db.getOrderByReference(orderReference.trim().toUpperCase());
     if (!order) {
       return res.status(404).json({ success: false, error: 'Order not found' });
     }
+    if (
+      !requester.authenticatedCustomerId ||
+      requester.authenticatedCustomerId !== order.customerId
+    ) {
+      db.recordAuditLog({
+        actor: requester.authenticatedEmail || 'unauthenticated',
+        role: 'guest',
+        action: 'PAYMENT_SIMULATION_ACCESS_DENIED',
+        targetType: 'PAYMENT',
+        targetId: order.reference,
+        category: 'payment_failure',
+        severity: 'warning',
+        details: 'Payment simulation denied because the requester did not prove order ownership.',
+      });
+      return res.status(403).json({ success: false, error: 'Authenticate as the order owner to simulate payment.' });
+    }
 
-    const providerName = provider || order.paymentMethod;
+    if (order.status === 'PAID') {
+      return res.status(409).json({ success: false, error: 'Paid orders cannot be changed by the simulator.' });
+    }
 
+    const actor = `Sandbox Payment Simulator (${requester.authenticatedCustomerId})`;
     if (outcome === 'SUCCESS') {
       db.updateOrderStatus(
         order.reference,
         'PAID',
-        `Sandbox payment completed successfully via ${providerName.toUpperCase()}. Stock decremented permanently.`,
-        'Sandbox Payment Simulator'
+        'Sandbox payment completed. This is a test-only payment state, not a provider confirmation.',
+        actor
       );
     } else if (outcome === 'FAIL') {
       db.recordAuditLog({
-        actor: 'Payment Sandbox Simulator',
-        role: 'system',
+        actor,
+        role: 'customer',
         action: 'PAYMENT_ATTEMPT_FAILED',
         targetType: 'PAYMENT',
         targetId: order.reference,
         category: 'payment_failure',
         severity: 'warning',
-        details: `Simulated payment failure (card decline / 3D Secure timeout) for order ${order.reference} via ${providerName.toUpperCase()}`,
+        details: 'Test-only simulated payment failure.',
       });
-      db.updateOrderStatus(
-        order.reference,
-        'PAYMENT_FAILED',
-        `Sandbox simulated payment failure via ${providerName.toUpperCase()}.`,
-        'Sandbox Payment Simulator'
-      );
-    } else if (outcome === 'CANCEL') {
-      db.updateOrderStatus(
-        order.reference,
-        'PAYMENT_CANCELLED',
-        `Sandbox user payment cancelled.`,
-        'Sandbox Payment Simulator'
-      );
+      db.updateOrderStatus(order.reference, 'PAYMENT_FAILED', 'Sandbox simulated payment failure.', actor);
+    } else {
+      db.updateOrderStatus(order.reference, 'PAYMENT_CANCELLED', 'Sandbox payment cancelled.', actor);
     }
 
-    res.json({ success: true, order: db.getOrderByReference(orderReference) });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
+    res.json({ success: true, order: db.getOrderByReference(order.reference) });
+  } catch {
+    res.status(500).json({ success: false, error: 'Unable to process payment simulation.' });
   }
 });
 
