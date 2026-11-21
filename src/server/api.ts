@@ -654,7 +654,7 @@ apiRouter.post('/payments/:provider/webhook', async (req: Request, res: Response
       return res.status(404).json({ success: false, error: 'Order not found' });
     }
 
-    // Guard against repeat successful notifications for an already-paid order.\n    if (order.status === 'PAID' && verification.status === 'SUCCESSFUL') {\n      db.recordAuditLog({ actor: providerId.toUpperCase() + ' Webhook', role: 'system', action: 'PAYMENT_WEBHOOK_DUPLICATE_IGNORED', targetType: 'PAYMENT', targetId: order.reference, category: 'payment_failure', severity: 'info', details: 'Duplicate successful payment notification ignored for already-paid order ' + order.reference + '.' });\n      return res.json({ success: true, message: 'Duplicate notification safely ignored.' });\n    }\n\n    // Verify amount match in integer cents\n    const amountCheck = verifyPaymentAmount({
+    // Once paid, do not allow later failure/cancel notifications to downgrade state.\n    // Durable idempotency still requires database-backed transactions/event IDs.\n    if (order.status === 'PAID') {\n      db.recordAuditLog({ actor: providerId.toUpperCase() + ' Webhook', role: 'system', action: 'PAYMENT_WEBHOOK_POST_PAYMENT_IGNORED', targetType: 'PAYMENT', targetId: order.reference, category: 'payment_failure', severity: 'info', details: 'Post-payment webhook ignored to prevent paid order state downgrade: ' + order.reference + '.' });\n      return res.json({ success: true, message: 'Notification ignored for already-paid order.' });\n    }\n\n    // Verify amount match in integer cents\n    const amountCheck = verifyPaymentAmount({
       expectedCents: order.totalCents,
       receivedCents: verification.amountCents,
     });
