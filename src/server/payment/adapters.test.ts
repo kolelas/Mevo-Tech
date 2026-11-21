@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { PaystackProvider } from './paystack';
 import { OzowProvider } from './ozow';
 import { CryptoPaymentProvider } from './crypto';
+import { PayflexProvider } from './payflex';
 
 test('Paystack legacy webhook accepts only matching raw-body HMAC signature', async () => {
   const secret = 'test-secret';
@@ -76,7 +77,7 @@ test('Paystack non-charge events cannot mark an order as paid', async () => {
   assert.equal(result.status, 'PENDING');
 });
 
-test('Ozow and crypto webhook verification remain fail-closed', async () => {
+test('Ozow, crypto, and Payflex webhook verification remain fail-closed', async () => {
   const payload = JSON.stringify({ status: 'SUCCESSFUL', amount: '100.00', reference: 'MEV-TEST' });
   const ozow = await new OzowProvider().verifyWebhook({}, payload);
   assert.equal(ozow.isValid, false);
@@ -84,4 +85,8 @@ test('Ozow and crypto webhook verification remain fail-closed', async () => {
   const cryptoResult = await new CryptoPaymentProvider().verifyWebhook({}, payload);
   assert.equal(cryptoResult.isValid, false);
   assert.equal(cryptoResult.signatureVerified, false);
+
+  const payflex = await new PayflexProvider().verifyWebhook({}, payload);
+  assert.equal(payflex.isValid, false);
+  assert.equal(payflex.signatureVerified, false);
 });
