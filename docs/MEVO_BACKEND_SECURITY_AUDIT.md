@@ -75,3 +75,13 @@ Scope: backend, customer account workspace, and security. The storefront is expl
 - If the current-format header is present but invalid, the adapter does not fall back to the deprecated header (prevents signature downgrade). If it is absent, legacy `X-Paystack-Signature` verification remains available using `PAYSTACK_SECRET_KEY` for migration.
 - Corrected adapter test import paths and added tests for the timestamped format, stale timestamps, malformed/duplicate timestamp fields, and downgrade resistance. The adapter test file is now included in the package test script.
 - The test suite has not yet been run. This does not implement durable event idempotency, database transactions, or provider reconciliation. Configure the webhook signing secret only in the deployment environment after verifying the provider's test/live mode; no credentials were changed here.
+
+
+## Payment event and currency safeguards (latest)
+- Paystack order state changes are now limited to signed `charge.success` and `charge.failed` events. Other signed event families cannot be interpreted as checkout payment confirmation.
+- Paystack transaction amount must be a positive safe integer, and its currency is read from the signed event rather than assumed from local configuration.
+- The webhook handler now requires both amount and currency to match the order before marking it paid. Mismatches are placed on fulfilment hold and logged.
+- Payflex webhook handling now fails closed. The existing adapter had been treating caller-supplied status fields as verified without an authentication contract; those payloads can no longer mark orders paid.
+- Repaired malformed literal newline escapes in the payment-state guard in `src/server/api.ts`; this was a source-integrity correction, not a storefront change.
+- Adapter tests cover Paystack current/legacy signatures, stale timestamps, multiple signature entries, downgrade resistance, event allowlisting, currency extraction, and fail-closed behavior for Payflex/Ozow/crypto. Tests are configured but remain unexecuted.
+- PayFast and Payflex initiation adapters still contain placeholder/simulated behavior; do not enable live payment until provider APIs, webhook verification, transaction reconciliation, and end-to-end tests are completed.
