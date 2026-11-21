@@ -234,6 +234,7 @@ function makeTransactionalPool(role: string, clientQuery: (sql: string, values: 
   const client = {
     query: async (sql: string, values: unknown[] = []) => {
       transactionStatements.push(sql);
+      if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql)) return { rows: [] };
       return clientQuery(sql, values);
     },
     release: () => undefined,
