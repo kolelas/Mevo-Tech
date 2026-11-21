@@ -32,7 +32,8 @@ test('Paystack signing-secret header validates timestamped HMAC and supports rot
   const payload = '{"event":"charge.success","data":{"reference":"MEV-NEW","status":"success","amount":12345}}';
   const timestamp = Math.floor(Date.now() / 1000);
   const signature = crypto.createHmac('sha512', webhookSecret).update(`${timestamp}.${payload}`).digest('hex');
-  const header = `t=${timestamp},v1=whk_test-key:${signature}`;
+  const rotationSignature = '0'.repeat(128);
+  const header = `t=${timestamp},v1=whk_old-key:${rotationSignature},v1=whk_test-key:${signature}`;
   const result = await provider.verifyWebhook({ 'paystack-signature': header }, payload);
   assert.equal(result.isValid, true);
   assert.equal(result.signatureVerified, true);
