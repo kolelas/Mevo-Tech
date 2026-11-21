@@ -12,8 +12,11 @@ Scope: backend, customer account workspace, and security. The storefront is expl
 - Checkout item quantities must be integer values in a bounded range and invalid variants are rejected.
 - Cart validation now rejects malformed/non-bounded quantities and invalid variant IDs instead of silently pricing invalid variants as base products.
 - Public product-review responses now use a narrow projection and omit internal customer IDs, customer emails, and moderation/internal fields.
+- Customer account deletion target is derived from verified session identity and requires explicit confirmation.
+- Customer profile updates now use a strict allowlist (name and phone only), bounded string values, and trim normalization; unknown fields are discarded.
 
 ## Remaining high-risk work (not yet complete)
+- The API currently exposes no dedicated admin router; administrative management functions may be client/database-layer workflows and must be mapped and moved behind server-side authorization before production.
 1. Durable webhook idempotency: persist provider event/transaction IDs with uniqueness constraints and transactionally update order/payment/stock state. Current in-memory order state cannot provide cross-process or restart guarantees.
 2. Runtime persistence: the PostgreSQL schema foundation exists, but the runtime database implementation still uses in-memory Maps. Migration is not complete.
 3. Admin authorization: audit all admin endpoints and enforce server-side roles/permissions. Client UI role flags are not authorization.
