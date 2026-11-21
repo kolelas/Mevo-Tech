@@ -59,3 +59,11 @@ Scope: backend, customer account workspace, and security. The storefront is expl
 - Paystack HMAC-SHA512 adapter comparison uses format validation and constant-time comparison.
 - Added adapter tests for valid/forged/malformed Paystack signatures and fail-closed unconfigured behavior, and for Ozow/crypto's currently unverified status.
 - Tests are added but have not been executed in this environment. Express raw-body capture, provider reconciliation, and end-to-end tests remain outstanding.
+
+
+## Raw-body webhook verification groundwork
+- Express JSON middleware now captures the exact original JSON payload bytes as `rawBody`.
+- The Paystack webhook handler now passes this captured body to its verification adapter instead of re-serializing parsed JSON, avoiding signature mismatch caused by JSON formatting changes.
+- Paystack signature format validation and timing-safe comparison are implemented in the adapter.
+- This is legacy `X-Paystack-Signature` verification; migration to the current signing-secret header format and timestamp/replay validation remains outstanding. Provider-event idempotency and transactional processing also remain outstanding.
+- These code changes are not tested or deployed in this environment.
