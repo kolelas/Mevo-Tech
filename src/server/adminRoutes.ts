@@ -560,6 +560,17 @@ export function createAdminRouter(
         const updated = await runAdminTransaction(async (client) => {
           const locked = await client.query('SELECT id, status FROM mevo_support_cases WHERE id = $1 FOR UPDATE', [caseId]);
           if (!locked.rows[0]) return null;
+          if (typeof body.assignedTo === 'string') {
+            const assignee = await client.query(
+              'SELECT user_id FROM admin_roles WHERE user_id = $1 AND enabled = TRUE LIMIT 1',
+              [body.assignedTo],
+            );
+            if (!assignee.rows[0]) {
+              const error = new Error('The assigned administrator is not active.') as Error & { status?: number };
+              error.status = 400;
+              throw error;
+            }
+          }
           const columns: Record<string, string> = {
             status: 'status', priority: 'priority', assignedTo: 'assigned_to', resolutionNote: 'resolution_note',
           };
@@ -592,8 +603,12 @@ export function createAdminRouter(
           return;
         }
         res.json({ success: true, supportCase: updated });
-      } catch {
-        res.status(503).json({ success: false, error: 'Support case update failed; no partial changes were committed.' });
+      } catch (error) {
+        if ((error as { status?: number }).status === 400) {
+          res.status(400).json({ success: false, error: (error as Error).message });
+        } else {
+          res.status(503).json({ success: false, error: 'Support case update failed; no partial changes were committed.' });
+        }
       }
     })();
   });
