@@ -463,15 +463,19 @@ apiRouter.post('/checkout/create-order', checkoutRateLimiter, (req: Request, res
         return res.status(400).json({ success: false, error: `Product unavailable: ${item.productId}` });
       }
 
+      if (!Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 99) {
+        return res.status(400).json({ success: false, error: 'Item quantities must be whole numbers between 1 and 99.' });
+      }
       let unitPriceCents = product.promotionalPriceCents || product.priceCents;
       let variantTitle: string | undefined;
 
       if (item.variantId) {
         const variant = product.variants.find((v) => v.id === item.variantId);
-        if (variant) {
-          unitPriceCents = variant.promotionalPriceCents || variant.priceCents;
-          variantTitle = variant.title;
+        if (!variant) {
+          return res.status(400).json({ success: false, error: `Invalid product variant: ${item.variantId}` });
         }
+        unitPriceCents = variant.promotionalPriceCents || variant.priceCents;
+        variantTitle = variant.title;
       }
 
       const totalItemCents = unitPriceCents * item.quantity;
@@ -644,8 +648,7 @@ apiRouter.post('/payments/:provider/webhook', async (req: Request, res: Response
       return res.status(404).json({ success: false, error: 'Order not found' });
     }
 
-    // Verify amount match in integer cents
-    const amountCheck = verifyPaymentAmount({
+    // Guard against repeat successful notifications for an already-paid order.\n    if (order.status === 'PAID' && verification.status === 'SUCCESSFUL') {\n      db.recordAuditLog({ actor: providerId.toUpperCase() + ' Webhook', role: 'system', action: 'PAYMENT_WEBHOOK_DUPLICATE_IGNORED', targetType: 'PAYMENT', targetId: order.reference, category: 'payment_failure', severity: 'info', details: 'Duplicate successful payment notification ignored for already-paid order ' + order.reference + '.' });\n      return res.json({ success: true, message: 'Duplicate notification safely ignored.' });\n    }\n\n    // Verify amount match in integer cents\n    const amountCheck = verifyPaymentAmount({
       expectedCents: order.totalCents,
       receivedCents: verification.amountCents,
     });
