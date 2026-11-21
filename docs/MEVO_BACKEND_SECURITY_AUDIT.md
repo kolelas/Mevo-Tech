@@ -112,3 +112,10 @@ Scope: backend, customer account workspace, and security. The storefront is expl
 - Added 004_payment_webhook_leases.sql with expiring worker leases, retry counts, payload-digest conflict detection, provider transaction uniqueness handling, and lease-token-guarded event completion functions.
 - The SQL claim function distinguishes new claims, already-processed duplicates, active concurrent processing, payload conflicts, and provider transaction collisions.
 - The migration is additive and is not applied. The active API still uses the in-memory Maps database and does not call these SQL functions. Durable replay protection is therefore NOT yet active; runtime PostgreSQL integration and a single transaction covering event claim, order/payment state, inventory, and event completion are mandatory before production.
+
+
+## PostgreSQL migration and webhook-lease CI coverage (follow-up)
+- Corrected the webhook claim function's unique-violation path: it now re-reads a concurrently inserted event and classifies same-event deliveries as duplicate, in-progress, payload-conflict, or an expired-lease reclaim. A reused provider transaction ID belonging to a different event remains a transaction conflict.
+- Added SQL integration assertions for initial claims, concurrent delivery, payload digest mismatch, lease-token ownership, completed-event replay, provider transaction collision, and expired-lease recovery/attempt counting.
+- CI now provisions a disposable PostgreSQL 16 service, applies migrations 003 and 004, and runs the SQL assertions before the TypeScript/test/build checks.
+- This tests the migration foundation in CI only. It does not apply any migration to a live database, wire PostgreSQL into the application runtime, or make webhook replay protection active in production. Runtime transaction integration remains a separate milestone.
