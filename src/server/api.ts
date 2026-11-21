@@ -117,6 +117,10 @@ apiRouter.post('/cart/validate', (req: Request, res: Response) => {
     let hasStockIssue = false;
 
     for (const item of items) {
+      if (!item || typeof item.productId !== 'string' || !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 99) {
+        hasStockIssue = true;
+        continue;
+      }
       const product = db.getProductById(item.productId);
       if (!product || !product.isActive) {
         hasStockIssue = true;
@@ -129,14 +133,16 @@ apiRouter.post('/cart/validate', (req: Request, res: Response) => {
 
       if (item.variantId) {
         const variant = product.variants.find((v) => v.id === item.variantId);
-        if (variant) {
-          priceCents = variant.promotionalPriceCents || variant.priceCents;
-          availableStock = variant.onHandQuantity - variant.reservedQuantity;
-          variantTitle = variant.title;
+        if (!variant) {
+          hasStockIssue = true;
+          continue;
         }
+        priceCents = variant.promotionalPriceCents || variant.priceCents;
+        availableStock = variant.onHandQuantity - variant.reservedQuantity;
+        variantTitle = variant.title;
       }
 
-      const quantity = Math.min(item.quantity, Math.max(1, availableStock));
+      const quantity = Math.min(item.quantity, Math.max(0, availableStock));
       if (item.quantity > availableStock) {
         hasStockIssue = true;
       }
