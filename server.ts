@@ -33,7 +33,6 @@ async function startServer() {
   app.get('/health', (_req, res) => {
     res.json({
       status: 'healthy',
-      securityHardened: true,
       timestamp: new Date().toISOString(),
     });
   });
