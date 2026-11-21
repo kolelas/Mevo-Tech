@@ -128,3 +128,12 @@ Scope: backend, customer account workspace, and security. The storefront is expl
 - Added integration tests that use a disposable PostgreSQL database to verify connectivity, transaction commit, and rollback. CI supplies its isolated PostgreSQL service through `TEST_DATABASE_URL`.
 - The pool module is infrastructure only at this stage: it is not imported by the current API or Maps-backed database implementation. No customer, order, inventory, payment, or admin data is being written to PostgreSQL yet. Do not configure production `DATABASE_URL` expecting persistence until repositories and dual-read/write migration controls are implemented and validated.
 - Existing seeded/in-memory Maps remain the active runtime. The next migration step is repository-by-repository persistence with explicit schema mapping and transactional checkout/inventory/webhook boundaries; avoid a wholesale switch that could silently lose seeded or live data.
+
+
+## Database-backed admin authorization foundation
+- Added a server-side admin role resolver against the additive `admin_roles` table from migration 003.
+- Role lookup requires a verified identity-provider subject and verified email supplied by server-side token verification; it matches both stable user ID and normalized email, requires `enabled = TRUE`, and uses parameterized SQL.
+- Database errors, missing role records, unverified email, identity mismatch, disabled roles, and unknown role values all fail closed.
+- Added a least-privilege permission matrix for owner, admin, inventory manager, fulfilment manager, and customer support. Only the owner may manage admin roles.
+- Added unit coverage for identity validation, parameterization, fail-closed behavior, and role permissions, plus a disposable-PostgreSQL integration test for enabled/disabled role lookup and identity mismatch.
+- This is an authorization service foundation, not yet attached to HTTP routes. No current admin UI flag or customer JWT is accepted as admin proof. Before any admin route is enabled, its authentication middleware must validate the actual identity-provider token server-side and pass the verified subject/email into this service. No admin endpoint, production role, or live database was changed.
