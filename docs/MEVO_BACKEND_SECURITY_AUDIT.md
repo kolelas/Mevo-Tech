@@ -29,6 +29,15 @@ Scope: backend, customer account workspace, and security. The storefront is expl
 10. Deployment controls: production secrets, backups, restore test, logging, CI, dependency and vulnerability scanning.
 11. Cart validation remains advisory and must not be treated as the final checkout authority; stock and price must be rechecked transactionally at order creation.
 
+## Batch implementation groundwork (migration 003)
+- Added additive PostgreSQL tables for managed admin roles, unique provider webhook event IDs/transaction IDs, payment-attempt ledger, inventory reservations and order-status event history.
+- Migration 003 is not applied, and runtime code is not switched to PostgreSQL. No production credentials or schema changes were performed.
+- The payment webhook endpoint is not yet using the new event ledger; event deduplication/processing must be implemented in a transaction and tested before production.
+- Admin role table is groundwork only; API routes currently do not expose an admin management router. The frontend's admin path is not proof of authorization. Server-side admin management must be designed and wired to verified identity/custom claims and DB-backed roles.
+- Checkout/stock/coupon/payment transitions remain in-memory and non-transactional until the runtime migration is complete.
+- Provider-specific webhook event IDs need reliable extraction from each adapter and reconciliation strategy before ledger adoption.
+- Review constraints and migration tests remain unimplemented at runtime; SQL groundwork in earlier migration is not activated.
+
 ## Firestore rules hardening in this pass\n- Admin checks now require verified email and support Firebase custom role claims (`owner`/`admin`) while retaining the legacy email allowlist for transition. This hybrid is transitional, not the final admin identity design.\n- Price-alert creation is now limited to signed-in Firebase users with verified email, matching the authenticated token email, a bounded product ID, an allowlisted payload shape, and ACTIVE initial state.\n- Customers can delete their own price-alert documents; admin updates remain restricted.\n- This rules patch has not been deployed or emulator-tested. The runtime/API may not use Firestore for these records.\n\n## Additional migration foundation committed
 - Added `002_webhook_review_constraints.sql`: a unique provider/event ID table to support durable webhook idempotency and persistent review constraints (unique customer/product/order, rating bounds, moderation state).
 - These constraints are groundwork only. They are not wired to the active in-memory runtime and have not been applied to a database.
