@@ -94,3 +94,9 @@ Scope: backend, customer account workspace, and security. The storefront is expl
 - The repository's pre-existing `bun.lock` did not match `package.json`; CI currently runs `bun install` to refresh it in the runner. The refreshed lockfile is not committed yet, so frozen-lockfile installs remain a follow-up cleanup.
 - The build reports non-blocking warnings for `__dirname` in `vite.config.ts` and a JavaScript chunk above 500 kB. These are recorded for later build optimization and do not block this verification.
 - This CI result validates the current branch snapshot only; it is not staging, live payment, database migration, or production deployment approval.
+
+## Developer payment simulator access control (follow-up)
+- The simulated payment endpoint now remains unavailable in production and is additionally disabled in every environment unless `MEVO_ENABLE_PAYMENT_SIMULATOR=true` is explicitly set.
+- Requests are rate-limited, require a verified customer bearer session, and must match the order's customer ID. Invalid outcomes are rejected, and already-paid orders cannot be modified by the simulator.
+- Simulation audit entries identify the authenticated customer and clearly label the result as test-only; the simulator does not constitute provider confirmation.
+- This is a development/testing control only. It does not implement durable webhook idempotency or replace provider-side verification. Route-level tests and staging validation remain required.
