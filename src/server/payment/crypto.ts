@@ -68,14 +68,14 @@ export class CryptoPaymentProvider implements IPaymentProvider {
     const amountCents = Number(data.amountCents || 0);
 
     return {
-      isValid: true,
+      isValid: false,
       provider: 'crypto',
       orderReference,
       providerTransactionId,
       status: statusText === 'CONFIRMED' || statusText === 'SUCCESSFUL' ? 'SUCCESSFUL' : 'PENDING',
       amountCents,
       currency: 'ZAR',
-      signatureVerified: true,
+      signatureVerified: false,
       rawPayload: data,
     };
   }
