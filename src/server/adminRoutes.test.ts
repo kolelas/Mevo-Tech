@@ -503,3 +503,46 @@ test('support case assignment rejects inactive administrators', async () => {
     assert.ok(!fake.transactionStatements.some((sql) => sql.startsWith('UPDATE mevo_support_cases')));
   });
 });
+
+
+test('customer support can read bounded customer directory and customer support role is not given payment access', async () => {
+  const fake = makeTransactionalPool('customer_support', async (sql) => {
+    if (sql.includes('COUNT(*)')) return { rows: [{ total: '1' }] };
+    return { rows: [{ id: 'c-1', email: 'customer@example.com', status: 'active' }] };
+  });
+  const router = createAdminRouter(fake.pool, async () => identity);
+  await withServer(router, async (base) => {
+    const headers = { Authorization: 'Bearer verified' };
+    const customers = await fetch(`${base}/admin/customers?search=customer&limit=10`, { headers });
+    assert.equal(customers.status, 200);
+    assert.equal((await customers.json()).customers[0].id, 'c-1');
+    const payments = await fetch(`${base}/admin/payments/attempts`, { headers });
+    assert.equal(payments.status, 403);
+  });
+});
+
+test('administrator can read payment attempts without exposing payment secrets', async () => {
+  const fake = makeTransactionalPool('admin', async (sql) => {
+    if (sql.includes('COUNT(*)')) return { rows: [{ total: '1' }] };
+    return { rows: [{
+      id: 'pay-1',
+      order_id: 'o-1',
+      order_reference: 'MT-300',
+      provider: 'payfast',
+      status: 'succeeded',
+      amount_cents: 25000,
+      currency: 'ZAR',
+    }] };
+  });
+  const router = createAdminRouter(fake.pool, async () => identity);
+  await withServer(router, async (base) => {
+    const response = await fetch(`${base}/admin/payments/attempts?limit=10`, {
+      headers: { Authorization: 'Bearer verified' },
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.attempts[0].order_reference, 'MT-300');
+    assert.equal(body.attempts[0].amount_cents, 25000);
+    assert.equal('secret' in body.attempts[0], false);
+  });
+});
