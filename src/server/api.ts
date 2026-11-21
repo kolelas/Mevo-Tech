@@ -35,19 +35,8 @@ function getRequesterContext(req: Request): {
     }
   }
 
-  if (!authenticatedCustomerId) {
-    const headerCustId = req.headers['x-customer-id'] as string | undefined;
-    if (headerCustId && headerCustId.trim() !== '') {
-      authenticatedCustomerId = headerCustId.trim();
-    }
-  }
-
-  if (!authenticatedEmail) {
-    const headerEmail = req.headers['x-customer-email'] as string | undefined;
-    if (headerEmail && headerEmail.trim() !== '') {
-      authenticatedEmail = headerEmail.trim().toLowerCase();
-    }
-  }
+  // Never trust caller-controlled identity headers. Customer identity must come
+  // from a server-verified bearer token; headers are not proof of ownership.
 
   const rawSession =
     (req.headers['x-cart-session-id'] as string | undefined) ||
