@@ -793,7 +793,22 @@ apiRouter.post('/orders/lookup', emailFormRateLimiter, (req: Request, res: Respo
       return res.status(404).json({ success: false, error: 'No matching order found for this email and reference.' });
     }
 
-    res.json({ success: true, order });
+    // Public tracking must not expose full order, address, customer, or payment data.
+    res.json({
+      success: true,
+      order: {
+        reference: order.reference,
+        status: order.status,
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt,
+        items: order.items.map((item) => ({
+          name: item.name,
+          variantTitle: item.variantTitle,
+          quantity: item.quantity,
+        })),
+        statusHistory: order.statusHistory,
+      },
+    });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -930,33 +945,13 @@ apiRouter.post('/customer/login', authRateLimiter, (req: Request, res: Response)
 });
 
 // Social Login / Registration (Google & Facebook SSO)
-apiRouter.post('/customer/social-login', authRateLimiter, (req: Request, res: Response) => {
-  try {
-    const { provider, email, name, avatar, phone } = req.body;
-    if (!provider || !email) {
-      return res.status(400).json({ success: false, error: 'Provider and email are required for social login' });
-    }
-
-    if (provider !== 'google' && provider !== 'facebook') {
-      return res.status(400).json({ success: false, error: 'Provider must be google or facebook' });
-    }
-
-    const result = db.socialLoginCustomer({
-      provider,
-      email,
-      name: name || (provider === 'google' ? 'Google Customer' : 'Facebook Customer'),
-      avatar,
-      phone,
-    });
-
-    if (!result.success) {
-      return res.status(403).json(result);
-    }
-
-    res.json(result);
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
-  }
+apiRouter.post('/customer/social-login', authRateLimiter, (_req: Request, res: Response) => {
+  // Identity claims supplied by the client are not proof of authentication.
+  // Until provider-issued tokens are verified server-side, this endpoint fails closed.
+  res.status(501).json({
+    success: false,
+    error: 'Social login is temporarily unavailable until provider token verification is implemented.',
+  });
 });
 
 apiRouter.get('/customer/me', (req: Request, res: Response) => {
@@ -1200,24 +1195,18 @@ apiRouter.get('/price-alerts', (req: Request, res: Response) => {
 // Principle 5: Check who owns it before update or delete
 apiRouter.delete('/price-alerts/:id', (req: Request, res: Response) => {
   try {
-    const email = req.query.email as string | undefined;
+    const ctx = getRequesterContext(req);
+    if (!ctx.authenticatedCustomerId || !ctx.authenticatedEmail) {
+      return res.status(401).json({ success: false, error: 'A valid customer session is required.' });
+    }
     const alert = db.getAllPriceAlerts().find((a) => a.id === req.params.id);
-
     if (!alert) {
       return res.status(404).json({ success: false, error: 'Price alert not found' });
     }
-
-    // Verify ownership: requesting email matches alert email or admin authorized
     if (!verifyCustomerOwnership(req, alert.customerId, alert.email)) {
-      if (!email || email.trim().toLowerCase() !== alert.email.toLowerCase()) {
-        return res.status(403).json({
-          success: false,
-          error: 'Access denied: You can only delete price alerts created by your email (Ownership check enforced).',
-        });
-      }
+      return res.status(403).json({ success: false, error: 'Access denied: You can only delete your own price alerts.' });
     }
-
-    const success = db.cancelPriceAlert(req.params.id, email || alert.email);
+    const success = db.cancelPriceAlert(req.params.id, ctx.authenticatedEmail);
     if (!success) {
       return res.status(404).json({ success: false, error: 'Alert not found or unauthorized' });
     }
