@@ -150,6 +150,7 @@ export class PaystackProvider implements IPaymentProvider {
     const statusText = String(eventData.status || '').toLowerCase();
     const rawAmount = Number(eventData.amount);
     const amountCents = Number.isSafeInteger(rawAmount) && rawAmount > 0 ? rawAmount : 0;
+    const eventCurrency = typeof eventData.currency === 'string' ? eventData.currency.toUpperCase() : '';
 
     // Only charge events may affect an order. Other signed Paystack event
     // families (for example transfers or disputes) must not mark checkout paid.
@@ -164,7 +165,7 @@ export class PaystackProvider implements IPaymentProvider {
       providerTransactionId,
       status,
       amountCents,
-      currency: this.currency,
+      currency: eventCurrency,
       signatureVerified,
       rawPayload: data,
     };
