@@ -661,18 +661,18 @@ export function createAdminRouter(
       try {
         const pattern = search ? '%' + search + '%' : null;
         const result = await pool!.query(
-          \`SELECT id, email, display_name, status, created_at, updated_at
+          `SELECT id, email, display_name, status, created_at, updated_at
              FROM mevo_customers
             WHERE ($1::text IS NULL OR email ILIKE $1 OR display_name ILIKE $1)
               AND ($2::text IS NULL OR status = $2)
             ORDER BY created_at DESC, id ASC
-            LIMIT $3 OFFSET $4\`,
+            LIMIT $3 OFFSET $4`,
           [pattern, status || null, limit, offset],
         );
         const count = await pool!.query(
-          \`SELECT COUNT(*)::bigint AS total FROM mevo_customers
+          `SELECT COUNT(*)::bigint AS total FROM mevo_customers
             WHERE ($1::text IS NULL OR email ILIKE $1 OR display_name ILIKE $1)
-              AND ($2::text IS NULL OR status = $2)\`,
+              AND ($2::text IS NULL OR status = $2)`,
           [pattern, status || null],
         );
         res.json({ success: true, source: 'postgresql', pagination: { limit, offset, total: Number(count.rows[0]?.total ?? 0) }, customers: result.rows });
@@ -718,20 +718,20 @@ export function createAdminRouter(
       }
       try {
         const result = await pool!.query(
-          \`SELECT p.id, p.order_id, o.reference AS order_reference, p.provider,
+          `SELECT p.id, p.order_id, o.reference AS order_reference, p.provider,
                   p.provider_transaction_id, p.status, p.amount_cents, p.currency,
                   p.created_at, p.updated_at
              FROM mevo_payment_attempts p
              JOIN mevo_orders o ON o.id = p.order_id
             WHERE ($1::text IS NULL OR lower(p.status) = $1)
             ORDER BY p.created_at DESC, p.id DESC
-            LIMIT $2 OFFSET $3\`,
+            LIMIT $2 OFFSET $3`,
           [status || null, limit, offset],
         );
         const count = await pool!.query(
-          \`SELECT COUNT(*)::bigint AS total
+          `SELECT COUNT(*)::bigint AS total
              FROM mevo_payment_attempts p
-            WHERE ($1::text IS NULL OR lower(p.status) = $1)\`,
+            WHERE ($1::text IS NULL OR lower(p.status) = $1)`,
           [status || null],
         );
         res.json({ success: true, source: 'postgresql', pagination: { limit, offset, total: Number(count.rows[0]?.total ?? 0) }, attempts: result.rows });
