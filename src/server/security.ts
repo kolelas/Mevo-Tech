@@ -3,8 +3,14 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
 
-// Production cryptographic secret or fallback
-const JWT_SECRET = process.env.JWT_SECRET || 'mevo_tech_za_jwt_production_master_secret_2026';
+// Require an operator-provided secret in production. The development-only key
+// must never be used to sign production sessions.
+const JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV !== 'production'
+  ? 'mevo-tech-local-development-only-secret-do-not-use-in-production'
+  : '');
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET must be configured before starting Mevo Tech in production.');
+}
 const BCRYPT_ROUNDS = 10;
 
 /**
