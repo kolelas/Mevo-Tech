@@ -159,3 +159,10 @@ Scope: backend, customer account workspace, and security. The storefront is expl
 ## Protected administrator data reads
 
 Added permission-checked PostgreSQL read routes for the catalogue (`catalog.read`) and inventory summary/movement ledger (`inventory.read`). The routes use the additive `mevo_products` and `mevo_inventory_movements` tables, parameterized filters, bounded pagination, and narrow response projections. They return PostgreSQL as the explicit source and do not fall back to Maps. This is not a persistence cutover: current customer/storefront runtime remains Maps-backed, and no catalogue/inventory write route or production migration is enabled.
+
+
+## Transactional admin mutations
+
+Added least-privilege, database-backed administrator mutations for product edits and inventory adjustments. Product field names are allowlisted and values validated; price fields are integer cents and promotional pricing is checked against regular pricing under a row lock. Inventory adjustments use a row lock and reject stock reductions below reserved inventory. Each successful mutation and its audit event (plus inventory movement for stock changes) share one PostgreSQL transaction. Any thrown database error rolls back the transaction. Customer-support roles are denied write permissions by the existing permission matrix.
+
+Remaining limitations: no bulk catalogue import, inventory reservation lifecycle integration, supplier/warehouse workflows, order fulfilment mutations, or customer support case management is exposed yet. PostgreSQL remains opt-in and the legacy Maps runtime has not been cut over.
