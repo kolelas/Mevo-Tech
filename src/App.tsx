@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { AdminControlCentre } from './components/AdminControlCentre';
 import { AuthProvider } from './context/AuthContext';
 import { CartProvider, useCart } from './context/CartContext';
 import { ComparisonProvider, useComparison } from './context/ComparisonContext';
@@ -785,6 +786,9 @@ export function MainStore() {
 }
 
 export function App() {
+  if (window.location.pathname === '/admin' || window.location.pathname.startsWith('/admin/')) {
+    return <AdminControlCentre />;
+  }
   return (
     <AuthProvider>
       <CartProvider>
