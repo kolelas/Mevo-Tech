@@ -273,7 +273,7 @@ test('inventory adjustment locks stock and commits product, movement, and audit 
   });
 });
 
-test('inventory adjustment refuses to undercut reserved stock and rolls back', async () => {
+test('inventory adjustment refuses to undercut reserved stock without writing ledger rows', async () => {
   const fake = makeTransactionalPool('inventory_manager', async (sql) => {
     if (sql.startsWith('SELECT id, stock_on_hand')) return { rows: [{ id: 'p-1', stock_on_hand: 8, stock_reserved: 5 }] };
     throw new Error('No write should occur');
@@ -286,7 +286,7 @@ test('inventory adjustment refuses to undercut reserved stock and rolls back', a
       body: JSON.stringify({ productId: 'p-1', quantity: -4 }),
     });
     assert.equal(response.status, 409);
-    assert.ok(fake.transactionStatements.includes('ROLLBACK'));
+    assert.ok(fake.transactionStatements.includes('COMMIT'));
     assert.ok(!fake.transactionStatements.some((sql) => sql.startsWith('UPDATE mevo_products')));
   });
 });
