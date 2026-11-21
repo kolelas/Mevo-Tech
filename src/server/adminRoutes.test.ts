@@ -114,3 +114,45 @@ test('admin role assignment validates input before database writes', async () =>
     assert.equal(writeCount, 0);
   });
 });
+
+
+test('owner role revocation maps the database last-owner guard to conflict', async () => {
+  const pool = {
+    query: async (sql: string) => {
+      if (sql.includes('SELECT role')) return { rows: [{ role: 'owner' }] };
+      const error = new Error('last enabled owner') as Error & { code: string };
+      error.code = '23514';
+      throw error;
+    },
+  } as unknown as Pick<Pool, 'query'>;
+  const router = createAdminRouter(pool, async () => identity);
+  await withServer(router, async (base) => {
+    const response = await fetch(`${base}/admin/roles/sole-owner`, {
+      method: 'DELETE',
+      headers: { Authorization: 'Bearer verified' },
+    });
+    assert.equal(response.status, 409);
+    assert.match((await response.json()).error, /last enabled owner/i);
+  });
+});
+
+test('owner role revocation disables an enabled account with a parameterized query', async () => {
+  let updateValues: unknown[] = [];
+  const pool = {
+    query: async (sql: string, values: unknown[] = []) => {
+      if (sql.includes('SELECT role')) return { rows: [{ role: 'owner' }] };
+      assert.match(sql, /WHERE user_id = \$1 AND enabled = TRUE/);
+      updateValues = values;
+      return { rows: [{ user_id: 'staff-3' }] };
+    },
+  } as unknown as Pick<Pool, 'query'>;
+  const router = createAdminRouter(pool, async () => identity);
+  await withServer(router, async (base) => {
+    const response = await fetch(`${base}/admin/roles/staff-3`, {
+      method: 'DELETE',
+      headers: { Authorization: 'Bearer verified' },
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(updateValues, ['staff-3']);
+  });
+});
