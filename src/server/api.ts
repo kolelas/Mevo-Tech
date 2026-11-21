@@ -1122,8 +1122,9 @@ apiRouter.get('/customer/orders', (req: Request, res: Response) => {
     const ctx = getRequesterContext(req);
     const customerId = ctx.authenticatedCustomerId;
     const email = ctx.authenticatedEmail;
+    const ownerIdentity = customerId || email;
 
-    if (!customerId && !email) {
+    if (!ownerIdentity) {
       return res.status(401).json({ success: false, error: 'A valid customer session is required.' });
     }
 
@@ -1135,7 +1136,7 @@ apiRouter.get('/customer/orders', (req: Request, res: Response) => {
       });
     }
 
-    const orders = db.getCustomerOrders(customerId || email);
+    const orders = db.getCustomerOrders(ownerIdentity);
     res.json({ success: true, count: orders.length, orders });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
