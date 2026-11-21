@@ -100,3 +100,10 @@ Scope: backend, customer account workspace, and security. The storefront is expl
 - Requests are rate-limited, require a verified customer bearer session, and must match the order's customer ID. Invalid outcomes are rejected, and already-paid orders cannot be modified by the simulator.
 - Simulation audit entries identify the authenticated customer and clearly label the result as test-only; the simulator does not constitute provider confirmation.
 - This is a development/testing control only. It does not implement durable webhook idempotency or replace provider-side verification. Route-level tests and staging validation remain required.
+
+## Payment gateway configuration fail-closed follow-up
+- Removed built-in sample/sandbox merchant credentials from PayFast, Ozow, Payflex and crypto provider constructors. Missing credentials now leave the adapters unconfigured.
+- Provider configuration checks reject common sample/placeholder/sandbox values. The payment initiation route now returns HTTP 503 before creating a payment attempt when the selected provider is not configured.
+- PayFast webhook signature comparison now validates the expected hexadecimal signature format and uses a timing-safe comparison; verification also requires a configured provider.
+- Added adapter regression tests for PayFast valid/forged signatures and for default/placeholder gateway configuration.
+- Important: these safeguards do not make the currently stubbed provider initiation/refund flows production-ready. Ozow, Payflex and crypto webhook verification remain fail-closed; PayFast callback origin/provider reconciliation, amount checks, and route-level tests remain required. No provider secrets were added or changed.
