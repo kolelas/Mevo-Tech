@@ -156,3 +156,74 @@ test('owner role revocation disables an enabled account with a parameterized que
     assert.deepEqual(updateValues, ['staff-3']);
   });
 });
+
+
+test('catalogue read is permission-checked and uses bounded PostgreSQL pagination', async () => {
+  const queries: Array<{ sql: string; values: unknown[] }> = [];
+  const pool = {
+    query: async (sql: string, values: unknown[] = []) => {
+      if (sql.includes('SELECT role')) return { rows: [{ role: 'customer_support' }] };
+      queries.push({ sql, values });
+      if (sql.includes('COUNT(*)')) return { rows: [{ total: '1' }] };
+      return { rows: [{ id: 'p-1', sku: 'SKU-1', name: 'Keyboard' }] };
+    },
+  } as unknown as Pick<Pool, 'query'>;
+  const router = createAdminRouter(pool, async () => identity);
+  await withServer(router, async (base) => {
+    const response = await fetch(`${base}/admin/catalog/products?search=Key&limit=10&offset=5`, {
+      headers: { Authorization: 'Bearer verified' },
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.source, 'postgresql');
+    assert.equal(body.pagination.total, 1);
+    assert.equal(body.products[0].sku, 'SKU-1');
+    assert.equal(queries.length, 2);
+    assert.deepEqual(queries[0].values, ['%Key%', 10, 5]);
+    assert.match(queries[0].sql, /FROM mevo_products/);
+  });
+});
+
+test('catalogue read rejects invalid pagination and inventory access denies unsupported roles', async () => {
+  const pool = {
+    query: async (sql: string) => {
+      if (sql.includes('SELECT role')) return { rows: [{ role: 'customer_support' }] };
+      throw new Error('unexpected data query');
+    },
+  } as unknown as Pick<Pool, 'query'>;
+  const router = createAdminRouter(pool, async () => identity);
+  await withServer(router, async (base) => {
+    const invalid = await fetch(`${base}/admin/catalog/products?limit=1000`, {
+      headers: { Authorization: 'Bearer verified' },
+    });
+    assert.equal(invalid.status, 400);
+    const denied = await fetch(`${base}/admin/inventory/summary`, {
+      headers: { Authorization: 'Bearer verified' },
+    });
+    assert.equal(denied.status, 403);
+  });
+});
+
+test('inventory manager can read PostgreSQL inventory summary and movement ledger', async () => {
+  const statements: string[] = [];
+  const pool = {
+    query: async (sql: string) => {
+      if (sql.includes('SELECT role')) return { rows: [{ role: 'inventory_manager' }] };
+      statements.push(sql);
+      if (sql.includes('SUM(stock_on_hand)')) return { rows: [{ product_count: '4', units_available: '12' }] };
+      return { rows: [{ product_id: 'p-1', quantity: 3 }] };
+    },
+  } as unknown as Pick<Pool, 'query'>;
+  const router = createAdminRouter(pool, async () => identity);
+  await withServer(router, async (base) => {
+    const headers = { Authorization: 'Bearer verified' };
+    const summary = await fetch(`${base}/admin/inventory/summary`, { headers });
+    assert.equal(summary.status, 200);
+    assert.equal((await summary.json()).inventory.units_available, '12');
+    const movements = await fetch(`${base}/admin/inventory/movements?productId=p-1&limit=20`, { headers });
+    assert.equal(movements.status, 200);
+    assert.equal((await movements.json()).movements[0].quantity, 3);
+    assert.equal(statements.length, 2);
+    assert.ok(statements.every((sql) => sql.includes('mevo_inventory_movements') || sql.includes('FROM mevo_products')));
+  });
+});
