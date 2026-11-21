@@ -33,6 +33,8 @@ import {
   ShieldAlert,
   Bell,
   TrendingDown,
+  Mail,
+  Bookmark,
 } from 'lucide-react';
 
 interface CustomerDashboardProps {
@@ -40,7 +42,7 @@ interface CustomerDashboardProps {
   onSelectProduct: (product: Product) => void;
   onBackToStore: () => void;
   onProceedToPayOrder?: (order: Order) => void;
-  initialTab?: 'overview' | 'orders' | 'bought' | 'favourites' | 'profile';
+  initialTab?: 'overview' | 'orders' | 'bought' | 'favourites' | 'profile' | 'saved_carts';
 }
 
 export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
@@ -51,9 +53,28 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
   initialTab = 'overview',
 }) => {
   const { customer, customerLogout, updateCustomerProfile, openAuthModal } = useAuth();
-  const { addItem, wishlist, toggleWishlist } = useCart();
+  const {
+    addItem,
+    wishlist,
+    toggleWishlist,
+    abandonedCarts,
+    isLoadingAbandonedCarts,
+    refreshAbandonedCarts,
+    restoreAbandonedCart,
+    emailAbandonedCartReminder,
+    dismissAbandonedCart,
+  } = useCart();
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'bought' | 'favourites' | 'profile' | 'alerts'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'bought' | 'favourites' | 'profile' | 'alerts' | 'saved_carts'>(initialTab);
+  const [cartActionNotice, setCartActionNotice] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
+  const [busyCartId, setBusyCartId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
   const [priceAlerts, setPriceAlerts] = useState<PriceAlert[]>([]);
@@ -177,7 +198,65 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
   useEffect(() => {
     loadCustomerOrders();
     loadPriceAlerts();
+    refreshAbandonedCarts();
   }, [customer]);
+
+  const handleRestoreSavedCart = async (recoveryToken: string, cartId: string) => {
+    setBusyCartId(cartId);
+    setCartActionNotice(null);
+    const res = await restoreAbandonedCart(recoveryToken);
+    setBusyCartId(null);
+    if (res.success) {
+      setCartActionNotice({
+        type: 'success',
+        message: `Restored ${res.itemCount || ''} item(s) to your shopping bag${
+          res.suggestedCouponCode ? ` with bonus code ${res.suggestedCouponCode}` : ''
+        }.`,
+      });
+    } else {
+      setCartActionNotice({
+        type: 'error',
+        message: res.error || 'Could not restore saved cart.',
+      });
+    }
+  };
+
+  const handleEmailCartLink = async (cartId: string) => {
+    setBusyCartId(cartId);
+    setCartActionNotice(null);
+    const res = await emailAbandonedCartReminder(cartId, customer?.email);
+    setBusyCartId(null);
+    if (res.success) {
+      setCartActionNotice({
+        type: 'success',
+        message: res.message || `Recovery link emailed to ${customer?.email}.`,
+      });
+    } else {
+      setCartActionNotice({
+        type: 'error',
+        message: res.error || 'Unable to send recovery email.',
+      });
+    }
+  };
+
+  const handleDismissSavedCart = async (cartId: string) => {
+    setBusyCartId(cartId);
+    setCartActionNotice(null);
+    try {
+      await dismissAbandonedCart(cartId);
+      setCartActionNotice({
+        type: 'success',
+        message: 'Saved cart removed from your account.',
+      });
+    } catch (err: any) {
+      setCartActionNotice({
+        type: 'error',
+        message: err.message || 'Failed to dismiss saved cart.',
+      });
+    } finally {
+      setBusyCartId(null);
+    }
+  };
 
   if (!customer) {
     return (
@@ -380,6 +459,18 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
               <Bell className="w-4 h-4" />
               <span>Price Alerts ({priceAlerts.filter((a) => a.status === 'ACTIVE').length})</span>
             </button>
+
+            <button
+              onClick={() => setActiveTab('saved_carts')}
+              className={`px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
+                activeTab === 'saved_carts'
+                  ? 'bg-orange-600 text-white shadow-md'
+                  : 'text-neutral-400 hover:text-white hover:bg-neutral-800'
+              }`}
+            >
+              <Bookmark className="w-4 h-4" />
+              <span>Saved Carts ({abandonedCarts.length})</span>
+            </button>
           </div>
         </div>
       </div>
@@ -513,6 +604,54 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                 </div>
               )}
             </div>
+
+            {/* Recoverable Abandoned Carts Spotlight */}
+            {abandonedCarts.length > 0 && (
+              <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl border border-amber-200 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs">
+                <div className="flex items-start gap-3">
+                  <div className="w-11 h-11 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                    <Clock className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-neutral-900">
+                      You have {abandonedCarts.length} saved shopping {abandonedCarts.length === 1 ? 'bag' : 'bags'} ready to resume
+                    </h3>
+                    <p className="text-xs text-neutral-600 mt-0.5">
+                      Latest saved total:{' '}
+                      <strong className="font-mono text-neutral-900">
+                        {formatZAR(abandonedCarts[0].estimatedTotalCents)}
+                      </strong>
+                      {abandonedCarts[0].recoveryIncentiveCode && (
+                        <>
+                          {' '}· Bonus voucher:{' '}
+                          <span className="font-mono font-bold text-orange-700">
+                            {abandonedCarts[0].recoveryIncentiveCode}
+                          </span>
+                        </>
+                      )}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleRestoreSavedCart(abandonedCarts[0].recoveryToken, abandonedCarts[0].id)
+                    }
+                    className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    Restore Latest Cart
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('saved_carts')}
+                    className="px-4 py-2 bg-white hover:bg-neutral-50 border border-neutral-300 text-neutral-800 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    Manage ({abandonedCarts.length})
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -1298,6 +1437,170 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                     </div>
                   );
                 })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 7: SAVED & ABANDONED CARTS */}
+        {activeTab === 'saved_carts' && (
+          <div className="space-y-6">
+            <div className="bg-white p-6 rounded-2xl border border-neutral-200 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
+                    <Bookmark className="w-4 h-4" />
+                  </div>
+                  <h2 className="text-lg font-black text-neutral-900">Saved &amp; Abandoned Carts</h2>
+                </div>
+                <p className="text-xs text-neutral-500 mt-1 max-w-xl">
+                  Resume unfinished checkouts with verified Sandton inventory pricing and automatic bonus recovery vouchers.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={refreshAbandonedCarts}
+                disabled={isLoadingAbandonedCarts}
+                className="px-3.5 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isLoadingAbandonedCarts ? 'animate-spin text-orange-600' : ''}`} />
+                <span>Refresh</span>
+              </button>
+            </div>
+
+            {cartActionNotice && (
+              <div
+                className={`p-3.5 rounded-xl border text-xs flex items-center gap-2 ${
+                  cartActionNotice.type === 'success'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                    : 'bg-rose-50 border-rose-200 text-rose-700'
+                }`}
+              >
+                {cartActionNotice.type === 'success' ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                )}
+                <span className="font-semibold">{cartActionNotice.message}</span>
+              </div>
+            )}
+
+            {abandonedCarts.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-neutral-200 p-12 text-center space-y-4">
+                <div className="w-16 h-16 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto">
+                  <ShoppingBag className="w-8 h-8" />
+                </div>
+                <div className="max-w-sm mx-auto">
+                  <h3 className="text-base font-bold text-neutral-900">No saved or abandoned carts</h3>
+                  <p className="text-xs text-neutral-500 mt-1">
+                    When you save a shopping bag for later or exit checkout mid-way, it will appear here for one-click recovery.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={onBackToStore}
+                  className="px-6 py-2.5 bg-neutral-900 hover:bg-orange-600 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer"
+                >
+                  Browse Hardware Store
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {abandonedCarts.map((cart) => (
+                  <div
+                    key={cart.id}
+                    className="bg-white rounded-2xl border border-neutral-200 shadow-xs p-5 space-y-4"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-neutral-100">
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-xs font-bold text-neutral-900">{cart.id}</span>
+                          <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                            Saved Checkout
+                          </span>
+                          {cart.recoveryIncentiveCode && (
+                            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              Bonus Code: {cart.recoveryIncentiveCode}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-neutral-500">
+                          Saved {new Date(cart.abandonedAt || cart.updatedAt).toLocaleString()} · {cart.itemCount}{' '}
+                          {cart.itemCount === 1 ? 'item' : 'items'} · Reminders emailed: {cart.reminderCount}/3
+                        </p>
+                      </div>
+
+                      <div className="text-left sm:text-right">
+                        <span className="text-[10px] uppercase font-bold text-neutral-400 block">
+                          Estimated Total
+                        </span>
+                        <span className="font-mono font-black text-base text-neutral-900">
+                          {formatZAR(cart.estimatedTotalCents)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {cart.items.map((item, idx) => (
+                        <div
+                          key={`${cart.id}-${item.sku}-${idx}`}
+                          className="flex items-center gap-3 p-2.5 rounded-xl bg-neutral-50 border border-neutral-200"
+                        >
+                          <img
+                            src={item.image}
+                            alt={item.name}
+                            className="w-12 h-12 rounded-lg object-cover border border-neutral-200 bg-white shrink-0"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-bold text-neutral-900 truncate">{item.name}</p>
+                            <p className="text-[11px] text-neutral-500">
+                              Qty: {item.quantity} · <span className="font-mono">{formatZAR(item.unitPriceCents)}</span>
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-neutral-100">
+                      <span className="text-[11px] font-mono text-neutral-400 truncate max-w-xs">
+                        Recovery Token: {cart.recoveryToken}
+                      </span>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={busyCartId === cart.id}
+                          onClick={() => handleRestoreSavedCart(cart.recoveryToken, cart.id)}
+                          className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        >
+                          <ShoppingBag className="w-3.5 h-3.5" />
+                          <span>Restore to Cart</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={busyCartId === cart.id || cart.reminderCount >= 3}
+                          onClick={() => handleEmailCartLink(cart.id)}
+                          className="px-3.5 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        >
+                          <Mail className="w-3.5 h-3.5 text-orange-600" />
+                          <span>Email Recovery Link</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={busyCartId === cart.id}
+                          onClick={() => handleDismissSavedCart(cart.id)}
+                          className="px-3 py-2 text-xs font-bold text-neutral-500 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Dismiss</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>

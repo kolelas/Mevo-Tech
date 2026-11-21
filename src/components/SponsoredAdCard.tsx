@@ -15,7 +15,6 @@ import {
   DollarSign,
   Info,
 } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
 
 export interface AffiliateOffer {
   id: string;
@@ -98,7 +97,6 @@ export const SponsoredAdCard: React.FC<SponsoredAdCardProps> = ({
   placement = 'product_sidebar',
   className = '',
 }) => {
-  const { isAdminLoggedIn } = useAuth();
   const [offers, setOffers] = useState<AffiliateOffer[]>(() => {
     try {
       const saved = localStorage.getItem(LOCAL_STORAGE_KEY);

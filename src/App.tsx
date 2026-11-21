@@ -12,7 +12,6 @@ import { CartDrawer } from './components/CartDrawer';
 import { WishlistDrawer } from './components/WishlistDrawer';
 import { CheckoutModal } from './components/CheckoutModal';
 import { OrderTrackingView } from './components/OrderTrackingView';
-import { AdminPortal } from './components/AdminPortal';
 import { InfoPages } from './components/InfoPages';
 import { PromotionalBanner } from './components/PromotionalBanner';
 import { CategoryPage } from './components/CategoryPage';
@@ -55,9 +54,10 @@ const ICON_MAP = {
 
 export function MainStore() {
   const { isCustomerLoggedIn, openAuthModal } = useAuth();
-  const { addItem } = useCart();
+  const { addItem, restoreAbandonedCart } = useCart();
   const { isComparisonModalOpen, setIsComparisonModalOpen } = useComparison();
-  const [currentView, setCurrentView] = useState<string>('dashboard');
+  const [currentView, setCurrentView] = useState<string>('storefront');
+  const [recoveryBanner, setRecoveryBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortBy, setSortBy] = useState<'relevance' | 'price_asc' | 'price_desc' | 'newest'>('relevance');
 
@@ -77,26 +77,69 @@ export function MainStore() {
     }
   }, [isCustomerLoggedIn, openAuthModal]);
 
+  // Handle abandoned cart recovery links (?recover_cart=<token> or #recover=<token>)
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const queryToken = searchParams.get('recover_cart');
+    const hash = window.location.hash.replace('#', '');
+    const hashToken = hash.startsWith('recover=') ? hash.slice('recover='.length) : null;
+    const token = queryToken || hashToken;
+    if (!token) return;
+
+    restoreAbandonedCart(token).then((res) => {
+      if (res.success) {
+        setRecoveryBanner({
+          type: 'success',
+          message: `Welcome back! Restored ${res.itemCount || ''} item(s) from your saved cart${
+            res.suggestedCouponCode ? ` with bonus code ${res.suggestedCouponCode}` : ''
+          }.`,
+        });
+      } else {
+        setRecoveryBanner({
+          type: 'error',
+          message: res.error || 'Could not restore saved cart link.',
+        });
+      }
+      if (queryToken) {
+        searchParams.delete('recover_cart');
+        const nextSearch = searchParams.toString();
+        const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${window.location.hash}`;
+        window.history.replaceState({}, '', nextUrl);
+      }
+      if (hashToken) {
+        window.location.hash = 'storefront';
+      }
+    });
+  }, [restoreAbandonedCart]);
+
   // Parse URL pathname and hash on mount and update view
   useEffect(() => {
     const handleLocationChange = () => {
       const hash = window.location.hash.replace('#', '');
       const path = window.location.pathname.replace(/^\/+/, '');
 
-      if (hash === 'storefront' || path === 'storefront' || hash === 'shop') {
-        setCurrentView('storefront');
-        return;
-      }
       if (
         path === 'admin' ||
         path.startsWith('admin/') ||
         hash === 'admin' ||
         hash === 'dashboard' ||
-        path === 'dashboard' ||
-        hash === '' ||
-        path === ''
+        path === 'dashboard'
       ) {
-        setCurrentView('dashboard');
+        try {
+          window.history.replaceState({}, '', '/');
+        } catch {
+          // ignore
+        }
+        setCurrentView('storefront');
+        return;
+      }
+      if (
+        hash === 'storefront' ||
+        path === 'storefront' ||
+        hash === 'shop' ||
+        (hash === '' && path === '')
+      ) {
+        setCurrentView('storefront');
         return;
       }
       if (hash.startsWith('category=')) {
@@ -131,9 +174,7 @@ export function MainStore() {
         setCurrentView(hash);
         return;
       }
-      if (hash === 'storefront' || hash === '' || path === '') {
-        setCurrentView('storefront');
-      }
+      setCurrentView('storefront');
     };
 
     handleLocationChange();
@@ -155,8 +196,6 @@ export function MainStore() {
       window.location.hash = 'categories';
     } else if (view === 'track') {
       window.location.hash = 'track';
-    } else if (view === 'admin' || view === 'dashboard') {
-      window.location.hash = 'dashboard';
     } else if (view.startsWith('account')) {
       window.location.hash = view;
     } else if (view.startsWith('info_')) {
@@ -235,15 +274,6 @@ export function MainStore() {
     return 0;
   });
 
-  // Dedicated Secured Back Panel View: Pro Template Dashboard & Management Console
-  if (currentView === 'admin' || currentView === 'dashboard') {
-    return (
-      <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-[#f8f9fc] text-slate-900 font-sans antialiased">
-        <AdminPortal onBackToStore={() => navigateToView('storefront')} />
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen w-full max-w-full overflow-x-hidden flex flex-col bg-neutral-50 text-neutral-900 font-sans">
       {/* Universal Storefront Header with 3-Zone Contract */}
@@ -257,6 +287,27 @@ export function MainStore() {
         onSelectProduct={handleSelectProduct}
         onProceedToCheckout={handleProceedToCheckout}
       />
+
+      {recoveryBanner && (
+        <div
+          className={`px-4 py-2.5 text-xs border-b flex items-center justify-between gap-3 ${
+            recoveryBanner.type === 'success'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+              : 'bg-rose-50 border-rose-200 text-rose-800'
+          }`}
+        >
+          <div className="max-w-7xl mx-auto flex-1 flex items-center justify-between gap-3">
+            <span className="font-semibold">{recoveryBanner.message}</span>
+            <button
+              type="button"
+              onClick={() => setRecoveryBanner(null)}
+              className="text-xs font-bold underline cursor-pointer shrink-0"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Content Area */}
       <main className="flex-1">
@@ -646,6 +697,8 @@ export function MainStore() {
                 ? 'favourites'
                 : currentView === 'account_profile'
                 ? 'profile'
+                : currentView === 'account_saved_carts'
+                ? 'saved_carts'
                 : 'overview'
             }
             onSelectProduct={(p) => handleSelectProduct(p)}

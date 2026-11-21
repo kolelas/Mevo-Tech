@@ -115,7 +115,6 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
               <li><button onClick={() => onNavigate('info_privacy')} className="hover:text-orange-400 hover:drop-shadow-[0_0_8px_rgba(234, 88, 12,0.7)] transition-all">POPIA Privacy Notice</button></li>
               <li><button onClick={() => onNavigate('info_terms')} className="hover:text-orange-400 hover:drop-shadow-[0_0_8px_rgba(234, 88, 12,0.7)] transition-all">Terms of Sale</button></li>
               <li><button onClick={() => onNavigate('info_cpa')} className="hover:text-orange-400 hover:drop-shadow-[0_0_8px_rgba(234, 88, 12,0.7)] transition-all">Consumer Protection Act</button></li>
-              <li><button onClick={() => onNavigate('admin')} className="text-orange-400 hover:text-orange-300 hover:drop-shadow-[0_0_8px_rgba(234, 88, 12,0.8)] transition-all">Admin Portal</button></li>
             </ul>
           </div>
         </div>

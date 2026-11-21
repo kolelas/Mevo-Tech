@@ -1,30 +1,45 @@
+import crypto from 'crypto';
 import {
+  AbandonedCart,
+  AbandonedCartItem,
   AuditLogEntry,
+  CartItem,
   CouponDiscount,
   CustomerAccount,
-  CustomerAccountStatus,
   CustomerAuthProvider,
   Order,
   OrderStatus,
   PaymentAttempt,
   Product,
-  ProductPlacementSlot,
   ProductReview,
   PromotionalBanner,
+  RecoveredCartResponse,
   ShippingMethod,
   StockMovement,
   StockReservation,
   StoreSettings,
-  User,
   PriceAlert,
   PriceAlertTargetType,
 } from '../types';
 import { canTransitionOrderStatus } from '../utils/calculations';
 import { hashPassword, verifyPassword, signCustomerToken, sanitizeCustomerProfileUpdates } from './security';
-import { computeSalesAnalytics, SalesAnalyticsSummary } from '../utils/salesAnalytics';
 import { calculateTargetPriceCents, shouldTriggerPriceAlert, validatePriceAlertEmail } from '../utils/priceAlerts';
+import {
+  DEFAULT_ABANDONMENT_THRESHOLD_MS,
+  DEFAULT_CART_EXPIRY_MS,
+  DEFAULT_MAX_REMINDERS,
+  DEFAULT_REMINDER_COOLDOWN_MS,
+  evaluateAbandonedCartTotals,
+  isCartEligibleForAbandonment,
+  isCartExpired,
+  RawCartSyncItem,
+  sanitizeCartSyncItems,
+  shouldSendRecoveryReminder,
+  suggestRecoveryIncentiveCode,
+  verifyAbandonedCartOwnership,
+} from '../utils/abandonedCart';
 
-// Modern persistent transactional database state with automatic reservation expiry check
+// Modern persistent transactional database state with automatic reservation expiry & abandoned cart sweep
 class Database {
   private products: Map<string, Product> = new Map();
   private orders: Map<string, Order> = new Map();
@@ -32,8 +47,8 @@ class Database {
   private stockMovements: StockMovement[] = [];
   private auditLogs: AuditLogEntry[] = [];
   private priceAlerts: Map<string, PriceAlert> = new Map();
+  private abandonedCarts: Map<string, AbandonedCart> = new Map();
 
-  private users: Map<string, User> = new Map();
   private customers: Map<string, { account: CustomerAccount; passwordHash: string; verificationCode?: string; verificationExpires?: string }> = new Map();
   private reviews: Map<string, ProductReview[]> = new Map();
   private coupons: Map<string, CouponDiscount> = new Map();
@@ -74,54 +89,26 @@ class Database {
       },
     ];
 
-    this.seedUsers();
     this.seedCoupons();
     this.seedPromotions();
     this.seedProducts();
     this.seedCustomers();
     this.seedReviews();
     this.seedCustomerOrders();
+    this.seedAbandonedCarts();
     this.seedSystemActivityLogs();
 
-    // Start background reservation expiration cleanup every 30 seconds (unref'd to allow clean exit)
-    const cleanupInterval = setInterval(() => this.reapExpiredReservations(), 30000);
+    // Start background reservation expiry & abandoned cart sweep every 30 seconds (unref'd to allow clean exit)
+    const cleanupInterval = setInterval(() => {
+      this.reapExpiredReservations();
+      this.sweepAbandonedCarts();
+    }, 30000);
     if (typeof cleanupInterval === 'object' && cleanupInterval !== null && 'unref' in cleanupInterval) {
       cleanupInterval.unref();
     }
   }
 
-  private seedUsers() {
-    const defaultUsers: User[] = [
-      {
-        id: 'usr_owner',
-        email: 'owner@mevotech.co.za',
-        name: 'Mevo Executive Admin',
-        role: 'owner',
-        phone: '+27 82 555 0100',
-        createdAt: new Date().toISOString(),
-      },
-      {
-        id: 'usr_fulfilment',
-        email: 'fulfilment@mevotech.co.za',
-        name: 'Warehouse Operations',
-        role: 'fulfilment_manager',
-        phone: '+27 82 555 0101',
-        createdAt: new Date().toISOString(),
-      },
-      {
-        id: 'usr_customer',
-        email: 'blacquebeat@gmail.com',
-        name: 'Valued Customer',
-        role: 'customer',
-        phone: '+27 83 456 7890',
-        createdAt: new Date().toISOString(),
-      },
-    ];
-
-    for (const u of defaultUsers) {
-      this.users.set(u.id, u);
-    }
-  }
+  //Seeded customers below
 
   private seedCustomers() {
     const defaultCustomer: CustomerAccount = {
@@ -999,69 +986,6 @@ class Database {
     return Array.from(this.products.values()).find((p) => p.slug === slug);
   }
 
-  createProduct(data: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>, performedBy: string): Product {
-    const id = `prod_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const now = new Date().toISOString();
-    const product: Product = {
-      ...data,
-      id,
-      createdAt: now,
-      updatedAt: now,
-    };
-    this.products.set(id, product);
-
-    this.recordAuditLog({
-      actor: performedBy,
-      role: 'admin',
-      action: 'CREATE_PRODUCT',
-      targetType: 'PRODUCT',
-      targetId: id,
-      details: `Created product "${product.name}" with SKU ${product.sku} and initial stock ${product.onHandQuantity}`,
-    });
-
-    if (product.onHandQuantity > 0) {
-      this.stockMovements.push({
-        id: `mov_${Date.now()}`,
-        productId: id,
-        sku: product.sku,
-        type: 'RECEIPT',
-        quantityChange: product.onHandQuantity,
-        previousOnHand: 0,
-        newOnHand: product.onHandQuantity,
-        reason: 'Product creation initial stock',
-        performedBy,
-        timestamp: now,
-      });
-    }
-
-    return product;
-  }
-
-  updateProduct(id: string, updates: Partial<Product>, performedBy: string): Product {
-    const existing = this.products.get(id);
-    if (!existing) {
-      throw new Error(`Product not found: ${id}`);
-    }
-
-    const updated: Product = {
-      ...existing,
-      ...updates,
-      updatedAt: new Date().toISOString(),
-    };
-    this.products.set(id, updated);
-
-    this.recordAuditLog({
-      actor: performedBy,
-      role: 'admin',
-      action: 'UPDATE_PRODUCT',
-      targetType: 'PRODUCT',
-      targetId: id,
-      details: `Updated product properties for "${updated.name}" (${updated.sku})`,
-    });
-
-    return updated;
-  }
-
   // ---- Authoritative Inventory & Reservation Management ----
 
   /**
@@ -1228,67 +1152,9 @@ class Database {
     }
   }
 
-  /**
-   * Manual inventory adjustment with mandatory audit logging.
-   */
-  adjustInventory(params: {
-    productId: string;
-    variantId?: string;
-    quantityChange: number;
-    reason: string;
-    performedBy: string;
-  }): { success: boolean; newOnHand: number } {
-    const product = this.products.get(params.productId);
-    if (!product) throw new Error('Product not found');
-
-    const prevOnHand = product.onHandQuantity;
-    const newOnHand = Math.max(0, prevOnHand + params.quantityChange);
-    product.onHandQuantity = newOnHand;
-
-    if (params.variantId) {
-      const variant = product.variants.find((v) => v.id === params.variantId);
-      if (variant) {
-        variant.onHandQuantity = Math.max(0, variant.onHandQuantity + params.quantityChange);
-      }
-    }
-
-    const now = new Date().toISOString();
-    this.stockMovements.push({
-      id: `mov_adj_${Date.now()}`,
-      productId: product.id,
-      variantId: params.variantId,
-      sku: product.sku,
-      type: 'ADJUSTMENT',
-      quantityChange: params.quantityChange,
-      previousOnHand: prevOnHand,
-      newOnHand,
-      reason: params.reason,
-      performedBy: params.performedBy,
-      timestamp: now,
-    });
-
-    this.recordAuditLog({
-      actor: params.performedBy,
-      role: 'inventory_manager',
-      action: 'STOCK_ADJUSTMENT',
-      targetType: 'PRODUCT',
-      targetId: product.id,
-      details: `Stock adjusted by ${params.quantityChange > 0 ? '+' : ''}${params.quantityChange}. New on-hand: ${newOnHand}. Reason: ${params.reason}`,
-    });
-
-    return { success: true, newOnHand };
-  }
-
-  getStockMovements(productId?: string): StockMovement[] {
-    if (productId) {
-      return this.stockMovements.filter((m) => m.productId === productId);
-    }
-    return [...this.stockMovements].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  }
-
   // ---- Orders & Fulfilment ----
 
-  createOrder(order: Order): Order {
+  createOrder(order: Order, sessionId?: string): Order {
     this.orders.set(order.reference, order);
     this.recordAuditLog({
       actor: order.customerEmail,
@@ -1298,29 +1164,19 @@ class Database {
       targetId: order.reference,
       details: `Created order ${order.reference} totaling R ${(order.totalCents / 100).toFixed(2)} with payment method ${order.paymentMethod}`,
     });
+
+    this.markCartRecovered({
+      sessionId,
+      customerId: order.customerId,
+      customerEmail: order.customerEmail,
+      orderReference: order.reference,
+    });
+
     return order;
   }
 
   getOrderByReference(reference: string): Order | undefined {
     return this.orders.get(reference);
-  }
-
-  getOrders(filters?: { status?: OrderStatus; search?: string }): Order[] {
-    let list = Array.from(this.orders.values());
-    if (filters?.status) {
-      list = list.filter((o) => o.status === filters.status);
-    }
-    if (filters?.search && filters.search.trim() !== '') {
-      const q = filters.search.toLowerCase().trim();
-      list = list.filter(
-        (o) =>
-          o.reference.toLowerCase().includes(q) ||
-          o.customerEmail.toLowerCase().includes(q) ||
-          o.customerName.toLowerCase().includes(q) ||
-          (o.trackingNumber && o.trackingNumber.toLowerCase().includes(q))
-      );
-    }
-    return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
   updateOrderStatus(
@@ -1353,44 +1209,21 @@ class Database {
     // If transitioned to PAID, convert stock reservations to permanent sale deductions
     if (nextStatus === 'PAID' && prevStatus !== 'PAID') {
       this.convertReservationToSale(order.reference);
+      this.markCartRecovered({
+        customerId: order.customerId,
+        customerEmail: order.customerEmail,
+        orderReference: order.reference,
+      });
     }
 
     this.recordAuditLog({
       actor: updatedBy,
-      role: 'admin',
+      role: 'system',
       action: 'ORDER_STATUS_UPDATE',
       targetType: 'ORDER',
       targetId: reference,
       details: `Order status changed from ${prevStatus} to ${nextStatus}. Note: ${note}`,
     });
-
-    return { success: true, order };
-  }
-
-  updateOrderTracking(params: {
-    reference: string;
-    courierName: string;
-    trackingNumber: string;
-    trackingUrl?: string;
-    performedBy: string;
-  }): { success: boolean; order?: Order; error?: string } {
-    const order = this.orders.get(params.reference);
-    if (!order) return { success: false, error: 'Order not found' };
-
-    order.courierName = params.courierName;
-    order.trackingNumber = params.trackingNumber;
-    order.trackingUrl = params.trackingUrl || `https://thecourierguy.co.za/tracking?waybill=${params.trackingNumber}`;
-    order.dispatchedAt = new Date().toISOString();
-    order.updatedAt = order.dispatchedAt;
-
-    if (order.status === 'PROCESSING' || order.status === 'PAID') {
-      this.updateOrderStatus(
-        params.reference,
-        'SHIPPED',
-        `Dispatched via ${params.courierName} (Waybill: ${params.trackingNumber})`,
-        params.performedBy
-      );
-    }
 
     return { success: true, order };
   }
@@ -1409,19 +1242,6 @@ class Database {
     return { ...this.settings };
   }
 
-  updateSettings(updates: Partial<StoreSettings>, performedBy: string): StoreSettings {
-    this.settings = { ...this.settings, ...updates };
-    this.recordAuditLog({
-      actor: performedBy,
-      role: 'owner',
-      action: 'UPDATE_SETTINGS',
-      targetType: 'SETTINGS',
-      targetId: 'GLOBAL',
-      details: 'Updated store configuration parameters',
-    });
-    return { ...this.settings };
-  }
-
   getShippingMethods(): ShippingMethod[] {
     return [...this.shippingMethods];
   }
@@ -1430,41 +1250,8 @@ class Database {
     return this.coupons.get(code.toUpperCase());
   }
 
-  getAllCoupons(): CouponDiscount[] {
-    return Array.from(this.coupons.values()).sort((a, b) => {
-      // Sort active first, then newest
-      if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
-      return (b.createdAt || '').localeCompare(a.createdAt || '');
-    });
-  }
-
   getActiveCoupons(): CouponDiscount[] {
     return Array.from(this.coupons.values()).filter((c) => c.isActive);
-  }
-
-  createCoupon(coupon: CouponDiscount): CouponDiscount {
-    const code = coupon.code.trim().toUpperCase();
-    const existing = this.coupons.get(code);
-    const created: CouponDiscount = {
-      ...coupon,
-      code,
-      createdAt: existing?.createdAt || new Date().toISOString(),
-      usageCount: existing?.usageCount || 0,
-    };
-    this.coupons.set(code, created);
-    return created;
-  }
-
-  toggleCouponStatus(code: string): CouponDiscount | undefined {
-    const coupon = this.coupons.get(code.toUpperCase());
-    if (!coupon) return undefined;
-    coupon.isActive = !coupon.isActive;
-    this.coupons.set(code.toUpperCase(), { ...coupon });
-    return coupon;
-  }
-
-  deleteCoupon(code: string): boolean {
-    return this.coupons.delete(code.toUpperCase());
   }
 
   // ---- System Activity & Security Audit Trail ----
@@ -1716,117 +1503,6 @@ class Database {
       if (!b.endsAt) return true;
       return new Date(b.endsAt).getTime() > now.getTime();
     });
-  }
-
-  getAllPromotionalBanners(): PromotionalBanner[] {
-    return Array.from(this.promotionalBanners.values());
-  }
-
-  createPromotionalBanner(data: Omit<PromotionalBanner, 'id'>, performedBy: string): PromotionalBanner {
-    const id = `promo_${Date.now()}`;
-    const banner: PromotionalBanner = { ...data, id };
-    this.promotionalBanners.set(id, banner);
-
-    this.recordAuditLog({
-      actor: performedBy,
-      role: 'admin',
-      action: 'CREATE_PROMOTION',
-      targetType: 'PROMOTION',
-      targetId: id,
-      details: `Created promotional banner "${banner.title}" (Ends: ${banner.endsAt})`,
-    });
-
-    return banner;
-  }
-
-  updatePromotionalBanner(id: string, updates: Partial<PromotionalBanner>, performedBy: string): PromotionalBanner {
-    const existing = this.promotionalBanners.get(id);
-    if (!existing) throw new Error(`Promotion not found: ${id}`);
-
-    const updated = { ...existing, ...updates };
-    this.promotionalBanners.set(id, updated);
-
-    this.recordAuditLog({
-      actor: performedBy,
-      role: 'admin',
-      action: 'UPDATE_PROMOTION',
-      targetType: 'PROMOTION',
-      targetId: id,
-      details: `Updated promotional banner "${updated.title}"`,
-    });
-
-    return updated;
-  }
-
-  // ---- Admin Dashboard Metrics ----
-
-  getDashboardMetrics(timeframe: string = '12 Months'): {
-    totalSalesCents: number;
-    paidOrdersCount: number;
-    pendingOrdersCount: number;
-    averageOrderValueCents: number;
-    lowStockCount: number;
-    totalProductsCount: number;
-    recentOrders: Order[];
-    analytics: SalesAnalyticsSummary;
-  } {
-    const orders = Array.from(this.orders.values());
-    const allProducts = Array.from(this.products.values());
-    const analytics = computeSalesAnalytics(orders, allProducts, timeframe);
-
-    const paidOrders = orders.filter((o) => o.status === 'PAID' || o.status === 'PROCESSING' || o.status === 'SHIPPED' || o.status === 'DELIVERED');
-    const pendingOrders = orders.filter((o) => o.status === 'PENDING_PAYMENT');
-
-    const totalSalesCents = analytics.totalSalesCents;
-    const paidOrdersCount = analytics.totalOrdersCount;
-    const averageOrderValueCents = paidOrdersCount > 0 ? Math.round(totalSalesCents / paidOrdersCount) : 0;
-
-    const lowStockCount = allProducts.filter((p) => p.onHandQuantity - p.reservedQuantity <= p.lowStockThreshold).length;
-
-    return {
-      totalSalesCents,
-      paidOrdersCount,
-      pendingOrdersCount: pendingOrders.length,
-      averageOrderValueCents,
-      lowStockCount,
-      totalProductsCount: allProducts.length,
-      recentOrders: orders.slice(0, 8),
-      analytics,
-    };
-  }
-
-  resetSalesToZero(performedBy: string = 'Admin'): { success: boolean; message: string } {
-    const previousCount = this.orders.size;
-    this.orders.clear();
-    this.recordAuditLog({
-      actor: performedBy,
-      role: 'owner',
-      action: 'RESET_SALES_TO_ZERO',
-      targetType: 'STORE_METRICS',
-      targetId: 'ALL_ORDERS',
-      category: 'account_management',
-      severity: 'warning',
-      details: `All sales and orders were reset to zero (purged ${previousCount} orders). Live metrics reset to R 0.00 / $0.00.`,
-    });
-    return {
-      success: true,
-      message: `Successfully reset sales and purged ${previousCount} orders. All revenue reset to zero.`,
-    };
-  }
-
-  restoreStoreOrders(performedBy: string = 'Admin'): { success: boolean; count: number } {
-    this.seedCustomerOrders();
-    this.recordAuditLog({
-      actor: performedBy,
-      role: 'owner',
-      action: 'RESTORE_STORE_ORDERS',
-      targetType: 'STORE_METRICS',
-      targetId: 'ALL_ORDERS',
-      category: 'account_management',
-      severity: 'info',
-      details: `Restored store order history for demo verification. Total orders: ${this.orders.size}`,
-    });
-    return { success: true, count: this.orders.size };
   }
 
 
@@ -2156,89 +1832,6 @@ class Database {
     });
 
     return { success: true, customer: newCustomer, token };
-  }
-
-  // ---- Commercial-Grade Customer Account Management ----
-
-  getAllCustomers(): CustomerAccount[] {
-    const ordersList = Array.from(this.orders.values());
-    const result: CustomerAccount[] = [];
-
-    for (const record of this.customers.values()) {
-      const custOrders = ordersList.filter(
-        (o) => o.customerId === record.account.id || o.customerEmail.toLowerCase() === record.account.email.toLowerCase()
-      );
-      const totalSpend = custOrders
-        .filter((o) => o.status === 'PAID' || o.status === 'PROCESSING' || o.status === 'SHIPPED' || o.status === 'DELIVERED')
-        .reduce((sum, o) => sum + o.totalCents, 0);
-
-      result.push({
-        ...record.account,
-        orderCount: custOrders.length,
-        totalSpendCents: totalSpend,
-      });
-    }
-
-    return result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }
-
-  updateCustomerStatus(
-    customerId: string,
-    status: CustomerAccountStatus,
-    reason?: string,
-    performedBy: string = 'Admin'
-  ): { success: boolean; customer?: CustomerAccount; error?: string } {
-    const record = this.customers.get(customerId);
-    if (!record) {
-      return { success: false, error: 'Customer not found' };
-    }
-
-    const previousStatus = record.account.status;
-    record.account.status = status;
-    record.account.restrictionReason = reason;
-    record.account.statusUpdatedAt = new Date().toISOString();
-
-    this.recordAuditLog({
-      actor: performedBy,
-      role: 'admin',
-      action: `CUSTOMER_STATUS_${status.toUpperCase()}`,
-      targetType: 'CUSTOMER',
-      targetId: customerId,
-      details: `Updated customer status from ${previousStatus.toUpperCase()} to ${status.toUpperCase()} for ${record.account.email}. Reason: ${reason || 'Administrative policy enforcement'}`,
-    });
-
-    return { success: true, customer: record.account };
-  }
-
-  // ---- Store Merchandising & Product Placement ----
-
-  updateProductPlacement(
-    productId: string,
-    slot: ProductPlacementSlot,
-    priority: number = 1,
-    isPinned: boolean = false,
-    performedBy: string = 'Admin'
-  ): { success: boolean; product?: Product; error?: string } {
-    const product = this.products.get(productId);
-    if (!product) {
-      return { success: false, error: 'Product not found' };
-    }
-
-    product.placementSlot = slot;
-    product.placementPriority = priority;
-    product.isPinnedToTop = isPinned;
-    product.updatedAt = new Date().toISOString();
-
-    this.recordAuditLog({
-      actor: performedBy,
-      role: 'admin',
-      action: 'UPDATE_PRODUCT_PLACEMENT',
-      targetType: 'PRODUCT',
-      targetId: productId,
-      details: `Product "${product.name}" assigned to placement slot "${slot}" (Priority: ${priority}, Pinned: ${isPinned})`,
-    });
-
-    return { success: true, product };
   }
 
   // ---- POPIA Compliance Data Operations ----
@@ -2577,6 +2170,675 @@ class Database {
       message: `Price dropped to R ${(newPriceCents / 100).toFixed(2)}. ${triggeredCount} automated notification(s) dispatched.`,
       updatedProduct: product,
     };
+  }
+
+  // ---- Abandoned Cart Tracking, Sweeping & Recovery Engine ----
+
+  private seedAbandonedCarts() {
+    const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+    const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
+    const expiresAt = new Date(Date.now() + DEFAULT_CART_EXPIRY_MS).toISOString();
+
+    const sampleCart: AbandonedCart = {
+      id: 'acart_seed_blacque_1',
+      sessionId: 'sess_seed_blacque_mobile_1',
+      customerId: 'cust_blacquebeat',
+      customerEmail: 'blacquebeat@gmail.com',
+      customerName: 'Blacque Beat',
+      customerPhone: '+27 83 456 7890',
+      items: [
+        {
+          productId: 'prod_terasync_4tb_nvme',
+          sku: 'MEV-SSD-4TBG5',
+          name: 'TeraSync Gen5 4TB NVMe M.2 SSD',
+          brand: 'TeraSync',
+          image: '/src/assets/images/category_storage_ssd_1793214066602.jpg',
+          unitPriceCents: 899900,
+          quantity: 1,
+          lineTotalCents: 899900,
+          availableStock: 15,
+        },
+        {
+          productId: 'prod_keychron_pro',
+          sku: 'MEV-KB-NOVAPRO',
+          name: 'Nova Pro CNC Wireless Mechanical Keyboard',
+          brand: 'Nova Gear',
+          image: '/src/assets/images/hero_tech_showcase_1793053698167.jpg',
+          unitPriceCents: 329900,
+          quantity: 1,
+          lineTotalCents: 329900,
+          availableStock: 18,
+        },
+      ],
+      itemCount: 2,
+      subtotalCents: 1229800,
+      discountCents: 0,
+      estimatedTotalCents: 1229800,
+      currency: 'ZAR',
+      status: 'ABANDONED',
+      recoveryToken: 'rec_mevo_blacque_2026',
+      recoveryIncentiveCode: 'MEVOSUPER',
+      reminderCount: 1,
+      reminderHistory: [
+        {
+          reminderNumber: 1,
+          channel: 'email',
+          sentToEmail: 'blacquebeat@gmail.com',
+          incentiveCode: 'MEVOSUPER',
+          sentAt: threeHoursAgo,
+        },
+      ],
+      lastActivityAt: fourHoursAgo,
+      abandonedAt: threeHoursAgo,
+      lastReminderSentAt: threeHoursAgo,
+      expiresAt,
+      createdAt: fourHoursAgo,
+      updatedAt: threeHoursAgo,
+    };
+
+    this.abandonedCarts.set(sampleCart.id, sampleCart);
+  }
+
+  private resolveAbandonedCartItems(rawItems: RawCartSyncItem[]): AbandonedCartItem[] {
+    const resolved: AbandonedCartItem[] = [];
+    for (const raw of rawItems) {
+      const product = this.products.get(raw.productId);
+      if (!product || !product.isActive) continue;
+
+      let sku = product.sku;
+      let unitPriceCents = product.promotionalPriceCents || product.priceCents;
+      let availableStock = Math.max(0, product.onHandQuantity - product.reservedQuantity);
+      let variantTitle: string | undefined;
+
+      if (raw.variantId) {
+        const variant = product.variants.find((v) => v.id === raw.variantId);
+        if (variant) {
+          sku = variant.sku;
+          unitPriceCents = variant.promotionalPriceCents || variant.priceCents;
+          availableStock = Math.max(0, variant.onHandQuantity - variant.reservedQuantity);
+          variantTitle = variant.title;
+        } else if (product.variants.length === 0 && raw.variantId === `var_${product.id}_pro`) {
+          const basePrice = product.promotionalPriceCents || product.priceCents;
+          sku = `${product.sku}-PRO`;
+          unitPriceCents = Math.round(basePrice * 1.12);
+          availableStock = Math.max(1, product.onHandQuantity - 2);
+          variantTitle = 'Creator Pro Bundle (+ 3Yr MevoCare)';
+        } else if (product.variants.length === 0 && raw.variantId === `var_${product.id}_std`) {
+          variantTitle = 'Standard Workstation Edition';
+        }
+      }
+
+      const quantity = availableStock > 0 ? Math.min(raw.quantity, availableStock) : raw.quantity;
+      resolved.push({
+        productId: product.id,
+        variantId: raw.variantId,
+        sku,
+        name: product.name,
+        brand: product.brand,
+        variantTitle,
+        image: product.primaryImage,
+        unitPriceCents,
+        quantity,
+        lineTotalCents: unitPriceCents * quantity,
+        availableStock,
+      });
+    }
+    return resolved;
+  }
+
+  syncCartSession(params: {
+    sessionId: string;
+    items: unknown;
+    discountCode?: string;
+    customerId?: string;
+    customerEmail?: string;
+    customerName?: string;
+    customerPhone?: string;
+    nowMs?: number;
+  }): { success: boolean; cart: AbandonedCart | null } {
+    const sessionId = (params.sessionId || '').trim();
+    if (!sessionId) {
+      throw new Error('sessionId is required to sync cart');
+    }
+
+    const nowMs = params.nowMs ?? Date.now();
+    const nowIso = new Date(nowMs).toISOString();
+    const expiresIso = new Date(nowMs + DEFAULT_CART_EXPIRY_MS).toISOString();
+    const sanitized = sanitizeCartSyncItems(params.items);
+
+    // Find an existing open cart for this session
+    let existingCart: AbandonedCart | undefined;
+    for (const c of this.abandonedCarts.values()) {
+      if (c.sessionId === sessionId && (c.status === 'ACTIVE' || c.status === 'ABANDONED')) {
+        existingCart = c;
+        break;
+      }
+    }
+
+    if (sanitized.length === 0) {
+      if (existingCart && existingCart.status === 'ACTIVE') {
+        this.abandonedCarts.delete(existingCart.id);
+      }
+      return { success: true, cart: null };
+    }
+
+    const resolvedItems = this.resolveAbandonedCartItems(sanitized);
+    if (resolvedItems.length === 0) {
+      if (existingCart && existingCart.status === 'ACTIVE') {
+        this.abandonedCarts.delete(existingCart.id);
+      }
+      return { success: true, cart: null };
+    }
+
+    const cleanCouponCode = params.discountCode ? params.discountCode.trim().toUpperCase() : undefined;
+    const coupon = cleanCouponCode ? this.getCoupon(cleanCouponCode) : null;
+    const totals = evaluateAbandonedCartTotals({
+      items: resolvedItems,
+      coupon,
+      freeShippingThresholdCents: this.settings.freeShippingThresholdCents,
+    });
+
+    // Resolve authoritative customer details if customerId provided
+    const customerRecord = params.customerId ? this.customers.get(params.customerId)?.account : undefined;
+    const customerId = customerRecord?.id || existingCart?.customerId;
+    const customerEmail =
+      customerRecord?.email ||
+      (params.customerEmail && params.customerEmail.includes('@') ? params.customerEmail.trim().toLowerCase() : existingCart?.customerEmail);
+    const customerName = customerRecord?.name || (params.customerName?.trim() || existingCart?.customerName);
+    const customerPhone = customerRecord?.phone || (params.customerPhone?.trim() || existingCart?.customerPhone);
+
+    if (existingCart) {
+      existingCart.items = resolvedItems;
+      existingCart.itemCount = totals.itemCount;
+      existingCart.subtotalCents = totals.subtotalCents;
+      existingCart.discountCode = coupon && coupon.isActive ? coupon.code : undefined;
+      existingCart.discountCents = totals.discountCents;
+      existingCart.estimatedTotalCents = totals.estimatedTotalCents;
+      existingCart.customerId = customerId;
+      existingCart.customerEmail = customerEmail;
+      existingCart.customerName = customerName;
+      existingCart.customerPhone = customerPhone;
+      existingCart.status = 'ACTIVE';
+      existingCart.abandonedAt = undefined;
+      existingCart.recoveryIncentiveCode = suggestRecoveryIncentiveCode(totals.subtotalCents);
+      existingCart.lastActivityAt = nowIso;
+      existingCart.expiresAt = expiresIso;
+      existingCart.updatedAt = nowIso;
+      this.abandonedCarts.set(existingCart.id, existingCart);
+      return { success: true, cart: existingCart };
+    }
+
+    const newId = `acart_${nowMs}_${crypto.randomBytes(4).toString('hex')}`;
+    const recoveryToken = `rec_${crypto.randomBytes(20).toString('hex')}`;
+    const cart: AbandonedCart = {
+      id: newId,
+      sessionId,
+      customerId,
+      customerEmail,
+      customerName,
+      customerPhone,
+      items: resolvedItems,
+      itemCount: totals.itemCount,
+      subtotalCents: totals.subtotalCents,
+      discountCode: coupon && coupon.isActive ? coupon.code : undefined,
+      discountCents: totals.discountCents,
+      estimatedTotalCents: totals.estimatedTotalCents,
+      currency: 'ZAR',
+      status: 'ACTIVE',
+      recoveryToken,
+      recoveryIncentiveCode: suggestRecoveryIncentiveCode(totals.subtotalCents),
+      reminderCount: 0,
+      reminderHistory: [],
+      lastActivityAt: nowIso,
+      expiresAt: expiresIso,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    };
+
+    this.abandonedCarts.set(newId, cart);
+    return { success: true, cart };
+  }
+
+  markCartAbandonedNow(params: {
+    sessionId?: string;
+    customerId?: string;
+    customerEmail?: string;
+    reason?: string;
+    nowMs?: number;
+  }): { success: boolean; cart: AbandonedCart | null } {
+    const nowMs = params.nowMs ?? Date.now();
+    const nowIso = new Date(nowMs).toISOString();
+
+    let target: AbandonedCart | undefined;
+    for (const cart of this.abandonedCarts.values()) {
+      if (cart.status !== 'ACTIVE' || cart.items.length === 0) continue;
+      if (params.sessionId && cart.sessionId === params.sessionId.trim()) {
+        target = cart;
+        break;
+      }
+      if (params.customerId && cart.customerId === params.customerId) {
+        target = cart;
+        break;
+      }
+      if (
+        params.customerEmail &&
+        cart.customerEmail &&
+        cart.customerEmail.toLowerCase() === params.customerEmail.trim().toLowerCase()
+      ) {
+        target = cart;
+        break;
+      }
+    }
+
+    if (!target) {
+      return { success: false, cart: null };
+    }
+
+    target.status = 'ABANDONED';
+    target.abandonedAt = nowIso;
+    target.recoveryIncentiveCode = suggestRecoveryIncentiveCode(target.subtotalCents);
+    target.updatedAt = nowIso;
+    this.abandonedCarts.set(target.id, target);
+
+    this.recordAuditLog({
+      actor: target.customerEmail || target.sessionId,
+      role: target.customerId ? 'customer' : 'guest',
+      action: 'ABANDONED_CART_DETECTED',
+      targetType: 'ABANDONED_CART',
+      targetId: target.id,
+      category: 'system',
+      severity: 'info',
+      details: `Captured abandoned cart ${target.id} (${target.itemCount} items, R ${(target.subtotalCents / 100).toFixed(2)}). Reason: ${params.reason || 'Checkout exited prior to completion'}.`,
+    });
+
+    return { success: true, cart: target };
+  }
+
+  sweepAbandonedCarts(
+    thresholdMs: number = DEFAULT_ABANDONMENT_THRESHOLD_MS,
+    nowMs: number = Date.now()
+  ): { abandonedCount: number; expiredCount: number; remindersQueued: number } {
+    let abandonedCount = 0;
+    let expiredCount = 0;
+    let remindersQueued = 0;
+    const nowIso = new Date(nowMs).toISOString();
+
+    for (const cart of this.abandonedCarts.values()) {
+      if (isCartExpired(cart, nowMs)) {
+        cart.status = 'EXPIRED';
+        cart.updatedAt = nowIso;
+        this.abandonedCarts.set(cart.id, cart);
+        expiredCount++;
+        continue;
+      }
+
+      if (isCartEligibleForAbandonment(cart, nowMs, thresholdMs)) {
+        cart.status = 'ABANDONED';
+        cart.abandonedAt = nowIso;
+        cart.recoveryIncentiveCode = suggestRecoveryIncentiveCode(cart.subtotalCents);
+        cart.updatedAt = nowIso;
+        abandonedCount++;
+
+        this.recordAuditLog({
+          actor: 'Abandoned Cart Sweeper',
+          role: 'system',
+          action: 'ABANDONED_CART_DETECTED',
+          targetType: 'ABANDONED_CART',
+          targetId: cart.id,
+          category: 'system',
+          severity: 'info',
+          details: `Cart ${cart.id} transitioned to ABANDONED after inactivity window (${cart.itemCount} items, R ${(cart.subtotalCents / 100).toFixed(2)})`,
+        });
+
+        if (
+          shouldSendRecoveryReminder(cart, nowMs, DEFAULT_REMINDER_COOLDOWN_MS, DEFAULT_MAX_REMINDERS) &&
+          cart.reminderCount === 0 &&
+          cart.customerEmail
+        ) {
+          cart.reminderCount += 1;
+          cart.lastReminderSentAt = nowIso;
+          cart.reminderHistory.push({
+            reminderNumber: cart.reminderCount,
+            channel: 'email',
+            sentToEmail: cart.customerEmail,
+            incentiveCode: cart.recoveryIncentiveCode,
+            sentAt: nowIso,
+          });
+          remindersQueued++;
+
+          this.recordAuditLog({
+            actor: 'Abandoned Cart Recovery Daemon',
+            role: 'system',
+            action: 'ABANDONED_CART_REMINDER_SENT',
+            targetType: 'ABANDONED_CART',
+            targetId: cart.id,
+            category: 'system',
+            severity: 'info',
+            details: `Queued automated cart recovery email #${cart.reminderCount} to ${cart.customerEmail} (Token: ${cart.recoveryToken})`,
+          });
+        }
+
+        this.abandonedCarts.set(cart.id, cart);
+      }
+    }
+
+    return { abandonedCount, expiredCount, remindersQueued };
+  }
+
+  markCartRecovered(params: {
+    cartId?: string;
+    sessionId?: string;
+    customerId?: string;
+    customerEmail?: string;
+    orderReference: string;
+    nowMs?: number;
+  }): number {
+    const nowIso = new Date(params.nowMs ?? Date.now()).toISOString();
+    let recoveredCount = 0;
+
+    for (const cart of this.abandonedCarts.values()) {
+      if (cart.status !== 'ACTIVE' && cart.status !== 'ABANDONED') continue;
+
+      const matchesCartId = Boolean(params.cartId && cart.id === params.cartId);
+      const matchesSession = Boolean(params.sessionId && cart.sessionId === params.sessionId.trim());
+      const matchesCustId = Boolean(params.customerId && cart.customerId === params.customerId);
+      const matchesEmail = Boolean(
+        params.customerEmail &&
+          cart.customerEmail &&
+          cart.customerEmail.toLowerCase() === params.customerEmail.trim().toLowerCase()
+      );
+
+      if (matchesCartId || matchesSession || matchesCustId || matchesEmail) {
+        const wasAbandoned = cart.status === 'ABANDONED';
+        cart.status = 'RECOVERED';
+        cart.recoveredAt = nowIso;
+        cart.recoveredOrderReference = params.orderReference;
+        cart.updatedAt = nowIso;
+        this.abandonedCarts.set(cart.id, cart);
+        recoveredCount++;
+
+        if (wasAbandoned) {
+          this.recordAuditLog({
+            actor: cart.customerEmail || cart.sessionId,
+            role: 'customer',
+            action: 'ABANDONED_CART_RECOVERED',
+            targetType: 'ABANDONED_CART',
+            targetId: cart.id,
+            category: 'system',
+            severity: 'info',
+            details: `Abandoned cart ${cart.id} converted to order ${params.orderReference} (R ${(cart.subtotalCents / 100).toFixed(2)})`,
+          });
+        }
+      }
+    }
+
+    return recoveredCount;
+  }
+
+  getAbandonedCartsForOwner(params: {
+    customerId?: string;
+    email?: string;
+    sessionId?: string;
+    includeActive?: boolean;
+  }): AbandonedCart[] {
+    const results: AbandonedCart[] = [];
+    for (const cart of this.abandonedCarts.values()) {
+      if (cart.items.length === 0) continue;
+      if (cart.status !== 'ABANDONED' && !(params.includeActive && cart.status === 'ACTIVE')) {
+        continue;
+      }
+
+      const owned = verifyAbandonedCartOwnership(cart, {
+        authenticatedCustomerId: params.customerId,
+        authenticatedEmail: params.email,
+        sessionId: params.sessionId,
+      });
+
+      if (owned) {
+        results.push(cart);
+      }
+    }
+
+    return results.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  }
+
+  getAbandonedCartById(cartId: string): AbandonedCart | undefined {
+    return this.abandonedCarts.get(cartId);
+  }
+
+  getAbandonedCartByRecoveryToken(
+    token: string
+  ): { success: boolean; data?: RecoveredCartResponse; error?: string } {
+    const cleanToken = (token || '').trim();
+    if (!cleanToken) {
+      return { success: false, error: 'Recovery token is required' };
+    }
+
+    let found: AbandonedCart | undefined;
+    for (const cart of this.abandonedCarts.values()) {
+      if (cart.recoveryToken === cleanToken) {
+        found = cart;
+        break;
+      }
+    }
+
+    if (!found) {
+      return { success: false, error: 'Cart recovery link is invalid or does not exist.' };
+    }
+
+    if (found.status === 'EXPIRED') {
+      return { success: false, error: 'This saved cart link has expired after 30 days.' };
+    }
+
+    if (found.status === 'RECOVERED') {
+      return {
+        success: false,
+        error: `This cart was already completed as order ${found.recoveredOrderReference || ''}.`,
+      };
+    }
+
+    let hasStockChanges = false;
+    const restoredItems: CartItem[] = [];
+
+    for (const item of found.items) {
+      const product = this.products.get(item.productId);
+      if (!product || !product.isActive) {
+        hasStockChanges = true;
+        continue;
+      }
+
+      let priceCents = product.promotionalPriceCents || product.priceCents;
+      let availableStock = Math.max(0, product.onHandQuantity - product.reservedQuantity);
+      let variantTitle = item.variantTitle;
+
+      if (item.variantId) {
+        const variant = product.variants.find((v) => v.id === item.variantId);
+        if (!variant) {
+          hasStockChanges = true;
+          continue;
+        }
+        priceCents = variant.promotionalPriceCents || variant.priceCents;
+        availableStock = Math.max(0, variant.onHandQuantity - variant.reservedQuantity);
+        variantTitle = variant.title;
+      }
+
+      if (availableStock <= 0) {
+        hasStockChanges = true;
+        continue;
+      }
+
+      const quantity = Math.min(item.quantity, availableStock);
+      if (quantity < item.quantity) {
+        hasStockChanges = true;
+      }
+
+      restoredItems.push({
+        productId: product.id,
+        variantId: item.variantId,
+        sku: item.sku,
+        name: product.name,
+        brand: product.brand,
+        variantTitle,
+        image: product.primaryImage,
+        priceCents,
+        quantity,
+        availableStock,
+      });
+    }
+
+    const couponCode = found.discountCode || found.recoveryIncentiveCode;
+    const coupon = couponCode ? this.getCoupon(couponCode) || null : null;
+    const activeSuggestedCoupon = coupon && coupon.isActive ? coupon : null;
+
+    return {
+      success: true,
+      data: {
+        cart: found,
+        items: restoredItems,
+        suggestedCoupon: activeSuggestedCoupon,
+        hasStockChanges,
+      },
+    };
+  }
+
+  sendRecoveryReminder(params: {
+    cartId: string;
+    authenticatedCustomerId?: string;
+    authenticatedEmail?: string;
+    sessionId?: string;
+    overrideEmail?: string;
+    nowMs?: number;
+  }): {
+    success: boolean;
+    statusCode?: number;
+    cart?: AbandonedCart;
+    recoveryUrl?: string;
+    message?: string;
+    error?: string;
+  } {
+    const cart = this.abandonedCarts.get(params.cartId);
+    if (!cart) {
+      return { success: false, statusCode: 404, error: 'Abandoned cart not found' };
+    }
+
+    if (
+      !verifyAbandonedCartOwnership(cart, {
+        authenticatedCustomerId: params.authenticatedCustomerId,
+        authenticatedEmail: params.authenticatedEmail,
+        sessionId: params.sessionId,
+      })
+    ) {
+      return {
+        success: false,
+        statusCode: 403,
+        error: 'Access denied: You can only request reminders for your own cart (Ownership check enforced).',
+      };
+    }
+
+    if (cart.status === 'RECOVERED' || cart.status === 'EXPIRED') {
+      return {
+        success: false,
+        statusCode: 400,
+        error: `Cannot send reminder for cart in status ${cart.status}`,
+      };
+    }
+
+    const nowMs = params.nowMs ?? Date.now();
+    const nowIso = new Date(nowMs).toISOString();
+
+    if (params.overrideEmail && params.overrideEmail.includes('@')) {
+      cart.customerEmail = params.overrideEmail.trim().toLowerCase();
+    }
+
+    if (!cart.customerEmail || !cart.customerEmail.includes('@')) {
+      return {
+        success: false,
+        statusCode: 400,
+        error: 'A valid customer email address is required to send a cart recovery reminder.',
+      };
+    }
+
+    if (cart.status === 'ACTIVE') {
+      cart.status = 'ABANDONED';
+      cart.abandonedAt = nowIso;
+    }
+
+    cart.recoveryIncentiveCode = cart.recoveryIncentiveCode || suggestRecoveryIncentiveCode(cart.subtotalCents);
+
+    if (cart.reminderCount >= DEFAULT_MAX_REMINDERS) {
+      return {
+        success: false,
+        statusCode: 429,
+        error: `Maximum recovery reminders (${DEFAULT_MAX_REMINDERS}) already sent for this cart.`,
+      };
+    }
+
+    if (!shouldSendRecoveryReminder(cart, nowMs, DEFAULT_REMINDER_COOLDOWN_MS, DEFAULT_MAX_REMINDERS)) {
+      return {
+        success: false,
+        statusCode: 429,
+        error: 'A recovery reminder was recently sent for this cart. Please wait before sending another.',
+      };
+    }
+
+    cart.reminderCount += 1;
+    cart.lastReminderSentAt = nowIso;
+    cart.updatedAt = nowIso;
+    cart.reminderHistory.push({
+      reminderNumber: cart.reminderCount,
+      channel: 'email',
+      sentToEmail: cart.customerEmail,
+      incentiveCode: cart.recoveryIncentiveCode,
+      sentAt: nowIso,
+    });
+    this.abandonedCarts.set(cart.id, cart);
+
+    this.recordAuditLog({
+      actor: cart.customerEmail,
+      role: cart.customerId ? 'customer' : 'guest',
+      action: 'ABANDONED_CART_REMINDER_SENT',
+      targetType: 'ABANDONED_CART',
+      targetId: cart.id,
+      category: 'system',
+      severity: 'info',
+      details: `Sent cart recovery reminder #${cart.reminderCount} to ${cart.customerEmail} with token ${cart.recoveryToken}`,
+    });
+
+    return {
+      success: true,
+      cart,
+      recoveryUrl: `/?recover_cart=${cart.recoveryToken}`,
+      message: `Recovery link emailed to ${cart.customerEmail}${cart.recoveryIncentiveCode ? ` with bonus code ${cart.recoveryIncentiveCode}` : ''}.`,
+    };
+  }
+
+  dismissAbandonedCart(params: {
+    cartId: string;
+    authenticatedCustomerId?: string;
+    authenticatedEmail?: string;
+    sessionId?: string;
+  }): { success: boolean; statusCode?: number; error?: string } {
+    const cart = this.abandonedCarts.get(params.cartId);
+    if (!cart) {
+      return { success: false, statusCode: 404, error: 'Saved cart not found' };
+    }
+
+    if (
+      !verifyAbandonedCartOwnership(cart, {
+        authenticatedCustomerId: params.authenticatedCustomerId,
+        authenticatedEmail: params.authenticatedEmail,
+        sessionId: params.sessionId,
+      })
+    ) {
+      return {
+        success: false,
+        statusCode: 403,
+        error: 'Access denied: You can only dismiss your own saved carts.',
+      };
+    }
+
+    this.abandonedCarts.delete(params.cartId);
+    return { success: true };
   }
 }
 

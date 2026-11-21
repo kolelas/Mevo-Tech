@@ -1,23 +1,47 @@
 import {
-  AuditLogEntry,
+  AbandonedCart,
   CouponDiscount,
   CustomerAccount,
-  CustomerAccountStatus,
   CustomerAuthProvider,
   Order,
-  OrderStatus,
   PaymentProvider,
   Product,
-  ProductPlacementSlot,
   ProductReview,
   PromotionalBanner,
+  RecoveredCartResponse,
   ShippingAddress,
   ShippingMethod,
-  StockMovement,
   StoreSettings,
   PriceAlert,
   PriceAlertTargetType,
 } from '../types';
+
+const CUSTOMER_TOKEN_KEY = 'mevo_customer_token_v1';
+const CUSTOMER_SESSION_KEY = 'mevo_tech_customer_session_v2';
+const CART_SESSION_ID_KEY = 'mevo_cart_session_id';
+
+function readStoredCustomerSummary(): { id?: string; email?: string } {
+  try {
+    const raw = localStorage.getItem(CUSTOMER_SESSION_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return {
+      id: typeof parsed?.id === 'string' ? parsed.id : undefined,
+      email: typeof parsed?.email === 'string' ? parsed.email : undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
+function readStoredCartSessionId(): string | undefined {
+  try {
+    const sid = localStorage.getItem(CART_SESSION_ID_KEY);
+    return sid && sid.trim() !== '' ? sid.trim() : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export const api = {
   // Products
@@ -170,227 +194,6 @@ export const api = {
     return data.coupons || [];
   },
 
-  // Admin Token Management
-  getAdminToken(): string | null {
-    try {
-      const token = localStorage.getItem('mevo_admin_token');
-      if (token) return token;
-      return 'mevo_adm_master_depot_session_2026';
-    } catch {
-      return 'mevo_adm_master_depot_session_2026';
-    }
-  },
-
-  setAdminToken(token: string | null): void {
-    try {
-      if (token) {
-        localStorage.setItem('mevo_admin_token', token);
-      } else {
-        localStorage.removeItem('mevo_admin_token');
-      }
-    } catch (e) {
-      console.warn('Failed to persist admin token to localStorage', e);
-    }
-  },
-
-  getAdminAuthHeaders(): Record<string, string> {
-    const token = this.getAdminToken();
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-      headers['x-admin-token'] = token;
-    }
-    return headers;
-  },
-
-  // Admin Authentication
-  async adminLogin(username: string, password: string): Promise<{ token: string; user: any }> {
-    const res = await fetch('/api/admin/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
-    });
-    const data = await res.json();
-    if (!data.success) {
-      throw new Error(data.error || 'Authentication failed. Please verify credentials.');
-    }
-    this.setAdminToken(data.token);
-    return { token: data.token, user: data.user };
-  },
-
-  async adminLogout(): Promise<void> {
-    const token = this.getAdminToken();
-    try {
-      if (token) {
-        await fetch('/api/admin/logout', {
-          method: 'POST',
-          headers: this.getAdminAuthHeaders(),
-          body: JSON.stringify({ token }),
-        });
-      }
-    } catch (e) {
-      console.warn('Logout network error', e);
-    } finally {
-      this.setAdminToken(null);
-    }
-  },
-
-  async getAdminSession(): Promise<any | null> {
-    const token = this.getAdminToken();
-    if (!token) return null;
-
-    try {
-      const res = await fetch('/api/admin/session', {
-        headers: this.getAdminAuthHeaders(),
-      });
-      const data = await res.json();
-      if (!data.success) {
-        this.setAdminToken(null);
-        return null;
-      }
-      return data.user;
-    } catch {
-      return null;
-    }
-  },
-
-  async fetchWithAdminAuth(url: string, options: RequestInit = {}): Promise<Response> {
-    const defaultHeaders = this.getAdminAuthHeaders();
-    const headers = {
-      ...defaultHeaders,
-      ...((options.headers as Record<string, string>) || {}),
-    };
-
-    let res = await fetch(url, { ...options, headers });
-
-    // If 401 Unauthorized, automatically recover with the master session token and retry
-    if (res.status === 401) {
-      this.setAdminToken('mevo_adm_master_depot_session_2026');
-      const retryHeaders = {
-        ...this.getAdminAuthHeaders(),
-        ...((options.headers as Record<string, string>) || {}),
-      };
-      res = await fetch(url, { ...options, headers: retryHeaders });
-    }
-
-    return res;
-  },
-
-  // Admin APIs (Protected by requireAdminAuth)
-  async getAdminMetrics(timeframe: string = '12 Months'): Promise<any> {
-    const res = await this.fetchWithAdminAuth(`/api/admin/metrics?timeframe=${encodeURIComponent(timeframe)}`);
-    const data = await res.json();
-    if (!data.success) {
-      throw new Error(data.error || 'Failed to load metrics');
-    }
-    return data.metrics;
-  },
-
-  async adminResetSales(): Promise<{ success: boolean; message: string }> {
-    const res = await this.fetchWithAdminAuth('/api/admin/reset-sales', {
-      method: 'POST',
-    });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error || 'Failed to reset sales');
-    return data;
-  },
-
-  async adminRestoreSales(): Promise<{ success: boolean; count: number }> {
-    const res = await this.fetchWithAdminAuth('/api/admin/restore-sales', {
-      method: 'POST',
-    });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error || 'Failed to restore store orders');
-    return data;
-  },
-
-  async getAdminOrders(status?: OrderStatus, search?: string): Promise<Order[]> {
-    const params = new URLSearchParams();
-    if (status) params.set('status', status);
-    if (search) params.set('search', search);
-
-    const res = await this.fetchWithAdminAuth(`/api/admin/orders?${params.toString()}`);
-    const data = await res.json();
-    if (!data.success) {
-      throw new Error(data.error || 'Failed to load orders');
-    }
-    return data.orders;
-  },
-
-  async updateOrderStatus(
-    reference: string,
-    status: OrderStatus,
-    note?: string,
-    performedBy?: string
-  ): Promise<Order> {
-    const res = await this.fetchWithAdminAuth(`/api/admin/orders/${reference}/status`, {
-      method: 'POST',
-      body: JSON.stringify({ status, note, performedBy }),
-    });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error || 'Failed to update order status');
-    return data.order;
-  },
-
-  async updateOrderTracking(
-    reference: string,
-    courierName: string,
-    trackingNumber: string,
-    trackingUrl?: string,
-    performedBy?: string
-  ): Promise<Order> {
-    const res = await this.fetchWithAdminAuth(`/api/admin/orders/${reference}/tracking`, {
-      method: 'POST',
-      body: JSON.stringify({ courierName, trackingNumber, trackingUrl, performedBy }),
-    });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error || 'Failed to update tracking');
-    return data.order;
-  },
-
-  async adjustInventory(params: {
-    productId: string;
-    variantId?: string;
-    quantityChange: number;
-    reason: string;
-    performedBy?: string;
-  }): Promise<{ newOnHand: number }> {
-    const res = await this.fetchWithAdminAuth('/api/admin/inventory/adjust', {
-      method: 'POST',
-      body: JSON.stringify(params),
-    });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error || 'Failed to adjust inventory');
-    return data;
-  },
-
-  async getStockMovements(productId?: string): Promise<StockMovement[]> {
-    const params = productId ? `?productId=${productId}` : '';
-    const res = await this.fetchWithAdminAuth(`/api/admin/stock-movements${params}`);
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error || 'Failed to load stock movements');
-    return data.movements;
-  },
-
-  async getAuditLogs(): Promise<AuditLogEntry[]> {
-    const res = await this.fetchWithAdminAuth('/api/admin/audit-logs');
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error || 'Failed to load audit logs');
-    return data.logs;
-  },
-
-  async simulateSecurityEvent(eventType: 'failed_login' | 'failed_payment' | 'account_management' | 'security_incident', details?: string): Promise<AuditLogEntry> {
-    const res = await this.fetchWithAdminAuth('/api/admin/audit/simulate-event', {
-      method: 'POST',
-      body: JSON.stringify({ eventType, details }),
-    });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error || 'Failed to simulate security event');
-    return data.log;
-  },
-
   // Promotional Banners & Seasonal Deals
   async getActivePromotions(): Promise<PromotionalBanner[]> {
     const res = await fetch('/api/promotions/active');
@@ -399,123 +202,175 @@ export const api = {
     return data.banners;
   },
 
-  async getAdminPromotions(): Promise<PromotionalBanner[]> {
-    const res = await this.fetchWithAdminAuth('/api/admin/promotions');
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error || 'Failed to load promotions');
-    return data.banners;
+  // Customer JWT & Identity Header Helpers
+  getCustomerToken(): string | null {
+    try {
+      return localStorage.getItem(CUSTOMER_TOKEN_KEY);
+    } catch {
+      return null;
+    }
   },
 
-  async updatePromotion(id: string, updates: Partial<PromotionalBanner>, performedBy?: string): Promise<PromotionalBanner> {
-    const res = await this.fetchWithAdminAuth(`/api/admin/promotions/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify({ ...updates, performedBy }),
-    });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error || 'Failed to update promotion');
-    return data.banner;
+  setCustomerToken(token: string | null): void {
+    try {
+      if (token) {
+        localStorage.setItem(CUSTOMER_TOKEN_KEY, token);
+      } else {
+        localStorage.removeItem(CUSTOMER_TOKEN_KEY);
+      }
+    } catch {
+      // ignore storage errors
+    }
   },
 
-  // Admin Coupon Management & Generator
-  async adminGetCoupons(): Promise<CouponDiscount[]> {
-    const res = await this.fetchWithAdminAuth('/api/admin/coupons');
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error || 'Failed to load coupons');
-    return data.coupons || [];
+  getCustomerAuthHeaders(options?: {
+    sessionId?: string;
+    customerId?: string;
+    email?: string;
+  }): Record<string, string> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    const token = this.getCustomerToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    const storedCustomer = readStoredCustomerSummary();
+    const customerId = options?.customerId || storedCustomer.id;
+    const email = options?.email || storedCustomer.email;
+    const sessionId = options?.sessionId || readStoredCartSessionId();
+
+    if (customerId) headers['x-customer-id'] = customerId;
+    if (email) headers['x-customer-email'] = email;
+    if (sessionId) headers['x-cart-session-id'] = sessionId;
+    return headers;
   },
 
-  async adminCreateCoupon(params: {
-    code?: string;
-    type: 'PERCENTAGE' | 'FIXED_CENTS';
-    value: number;
-    minOrderCents: number;
-    description: string;
-    isActive?: boolean;
-    autoGenerateCode?: boolean;
-  }): Promise<CouponDiscount> {
-    const res = await this.fetchWithAdminAuth('/api/admin/coupons', {
+  // Abandoned Cart Sync, Capture & Recovery
+  async syncCart(params: {
+    sessionId: string;
+    items: Array<{ productId: string; variantId?: string; quantity: number }>;
+    discountCode?: string;
+    customerId?: string;
+    customerEmail?: string;
+    customerName?: string;
+    customerPhone?: string;
+  }): Promise<{ success: boolean; cart: AbandonedCart | null }> {
+    const res = await fetch('/api/cart/sync', {
       method: 'POST',
+      headers: this.getCustomerAuthHeaders({
+        sessionId: params.sessionId,
+        customerId: params.customerId,
+        email: params.customerEmail,
+      }),
       body: JSON.stringify(params),
     });
     const data = await res.json();
-    if (!data.success) throw new Error(data.error || 'Failed to create coupon');
-    return data.coupon;
+    if (!data.success) throw new Error(data.error || 'Failed to sync cart');
+    return data;
   },
 
-  async adminToggleCoupon(code: string): Promise<CouponDiscount> {
-    const res = await this.fetchWithAdminAuth(`/api/admin/coupons/${encodeURIComponent(code)}/toggle`, {
+  async markCartAbandoned(params: {
+    sessionId: string;
+    customerId?: string;
+    customerEmail?: string;
+    reason?: string;
+  }): Promise<{ success: boolean; captured: boolean; cart: AbandonedCart | null }> {
+    const res = await fetch('/api/cart/abandon', {
       method: 'POST',
+      headers: this.getCustomerAuthHeaders({
+        sessionId: params.sessionId,
+        customerId: params.customerId,
+        email: params.customerEmail,
+      }),
+      body: JSON.stringify(params),
     });
     const data = await res.json();
-    if (!data.success) throw new Error(data.error || 'Failed to toggle coupon');
-    return data.coupon;
+    if (!data.success) throw new Error(data.error || 'Failed to mark cart abandoned');
+    return data;
   },
 
-  async adminDeleteCoupon(code: string): Promise<boolean> {
-    const res = await this.fetchWithAdminAuth(`/api/admin/coupons/${encodeURIComponent(code)}`, {
+  async getAbandonedCarts(options?: {
+    sessionId?: string;
+    customerId?: string;
+    email?: string;
+    includeActive?: boolean;
+  }): Promise<AbandonedCart[]> {
+    const query = new URLSearchParams();
+    if (options?.sessionId) query.set('sessionId', options.sessionId);
+    if (options?.customerId) query.set('customerId', options.customerId);
+    if (options?.email) query.set('email', options.email);
+    if (options?.includeActive) query.set('includeActive', 'true');
+
+    const res = await fetch(`/api/cart/abandoned?${query.toString()}`, {
+      headers: this.getCustomerAuthHeaders({
+        sessionId: options?.sessionId,
+        customerId: options?.customerId,
+        email: options?.email,
+      }),
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Failed to load saved carts');
+    return data.carts || [];
+  },
+
+  async recoverAbandonedCart(token: string): Promise<RecoveredCartResponse> {
+    const res = await fetch(`/api/cart/recover/${encodeURIComponent(token)}`);
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Failed to restore saved cart');
+    return {
+      cart: data.cart,
+      items: data.items,
+      suggestedCoupon: data.suggestedCoupon || null,
+      hasStockChanges: Boolean(data.hasStockChanges),
+    };
+  },
+
+  async sendAbandonedCartReminder(
+    cartId: string,
+    options?: {
+      sessionId?: string;
+      customerId?: string;
+      email?: string;
+      overrideEmail?: string;
+    }
+  ): Promise<{ success: boolean; cart: AbandonedCart; recoveryUrl: string; message: string }> {
+    const res = await fetch(`/api/cart/abandoned/${encodeURIComponent(cartId)}/remind`, {
+      method: 'POST',
+      headers: this.getCustomerAuthHeaders({
+        sessionId: options?.sessionId,
+        customerId: options?.customerId,
+        email: options?.email,
+      }),
+      body: JSON.stringify({
+        sessionId: options?.sessionId,
+        overrideEmail: options?.overrideEmail,
+      }),
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Failed to send recovery email');
+    return data;
+  },
+
+  async dismissAbandonedCart(
+    cartId: string,
+    options?: {
+      sessionId?: string;
+      customerId?: string;
+      email?: string;
+    }
+  ): Promise<{ success: boolean; message: string }> {
+    const res = await fetch(`/api/cart/abandoned/${encodeURIComponent(cartId)}`, {
       method: 'DELETE',
+      headers: this.getCustomerAuthHeaders({
+        sessionId: options?.sessionId,
+        customerId: options?.customerId,
+        email: options?.email,
+      }),
     });
     const data = await res.json();
-    if (!data.success) throw new Error(data.error || 'Failed to delete coupon');
-    return true;
-  },
-
-  async createProduct(productData: any, performedBy?: string): Promise<Product> {
-    const res = await this.fetchWithAdminAuth('/api/admin/products', {
-      method: 'POST',
-      body: JSON.stringify({ ...productData, performedBy }),
-    });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error || 'Failed to create product');
-    return data.product;
-  },
-
-  async updateProduct(id: string, updates: any, performedBy?: string): Promise<Product> {
-    const res = await this.fetchWithAdminAuth(`/api/admin/products/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify({ ...updates, performedBy }),
-    });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error || 'Failed to update product');
-    return data.product;
-  },
-
-  // Admin Customer Accounts Management
-  async getAdminCustomers(): Promise<CustomerAccount[]> {
-    const res = await this.fetchWithAdminAuth('/api/admin/customers');
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error || 'Failed to load customer accounts');
-    return data.customers;
-  },
-
-  async updateCustomerStatus(
-    customerId: string,
-    status: CustomerAccountStatus,
-    reason?: string
-  ): Promise<CustomerAccount> {
-    const res = await this.fetchWithAdminAuth(`/api/admin/customers/${customerId}/status`, {
-      method: 'POST',
-      body: JSON.stringify({ status, reason }),
-    });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error || 'Failed to update customer status');
-    return data.customer;
-  },
-
-  // Admin Merchandising & Product Placement
-  async updateProductPlacement(
-    productId: string,
-    slot: ProductPlacementSlot,
-    priority: number = 1,
-    isPinned: boolean = false
-  ): Promise<Product> {
-    const res = await this.fetchWithAdminAuth('/api/admin/merchandising/placement', {
-      method: 'POST',
-      body: JSON.stringify({ productId, slot, priority, isPinned }),
-    });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error || 'Failed to update product placement');
-    return data.product;
+    if (!data.success) throw new Error(data.error || 'Failed to dismiss saved cart');
+    return data;
   },
 
   // Customer Accounts
@@ -550,6 +405,7 @@ export const api = {
     });
     const data = await res.json();
     if (!data.success) throw new Error(data.error || 'Email verification failed');
+    if (data.token) this.setCustomerToken(data.token);
     return data;
   },
 
@@ -564,7 +420,7 @@ export const api = {
     return data;
   },
 
-  async loginCustomer(email: string, password: string): Promise<{ success: boolean; customer: CustomerAccount }> {
+  async loginCustomer(email: string, password: string): Promise<{ success: boolean; customer: CustomerAccount; token?: string }> {
     const res = await fetch('/api/customer/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -572,6 +428,7 @@ export const api = {
     });
     const data = await res.json();
     if (!data.success) throw new Error(data.error || 'Failed to sign in');
+    if (data.token) this.setCustomerToken(data.token);
     return data;
   },
 
@@ -582,7 +439,7 @@ export const api = {
     name: string;
     avatar?: string;
     phone?: string;
-  }): Promise<{ success: boolean; customer: CustomerAccount }> {
+  }): Promise<{ success: boolean; customer: CustomerAccount; token?: string }> {
     const res = await fetch('/api/customer/social-login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -590,6 +447,7 @@ export const api = {
     });
     const data = await res.json();
     if (!data.success) throw new Error(data.error || 'Social authentication failed');
+    if (data.token) this.setCustomerToken(data.token);
     return data;
   },
 
@@ -598,7 +456,9 @@ export const api = {
     if (customerId) params.set('customerId', customerId);
     if (email) params.set('email', email);
 
-    const res = await fetch(`/api/customer/me?${params.toString()}`);
+    const res = await fetch(`/api/customer/me?${params.toString()}`, {
+      headers: this.getCustomerAuthHeaders({ customerId, email }),
+    });
     const data = await res.json();
     if (!data.success) throw new Error(data.error || 'Failed to get customer profile');
     return data.customer;
@@ -607,7 +467,7 @@ export const api = {
   async updateCustomerProfile(customerId: string, updates: Partial<CustomerAccount>): Promise<CustomerAccount> {
     const res = await fetch('/api/customer/profile', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.getCustomerAuthHeaders({ customerId }),
       body: JSON.stringify({ customerId, updates }),
     });
     const data = await res.json();
@@ -618,7 +478,7 @@ export const api = {
   async toggleCustomerFavourite(customerId: string, productId: string): Promise<string[]> {
     const res = await fetch('/api/customer/favourites/toggle', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.getCustomerAuthHeaders({ customerId }),
       body: JSON.stringify({ customerId, productId }),
     });
     const data = await res.json();
@@ -627,7 +487,13 @@ export const api = {
   },
 
   async getCustomerOrders(emailOrId: string): Promise<Order[]> {
-    const res = await fetch(`/api/customer/orders?customerId=${encodeURIComponent(emailOrId)}&email=${encodeURIComponent(emailOrId)}`);
+    const isEmail = emailOrId.includes('@');
+    const query = isEmail
+      ? `email=${encodeURIComponent(emailOrId)}`
+      : `customerId=${encodeURIComponent(emailOrId)}`;
+    const res = await fetch(`/api/customer/orders?${query}`, {
+      headers: this.getCustomerAuthHeaders(isEmail ? { email: emailOrId } : { customerId: emailOrId }),
+    });
     const data = await res.json();
     if (!data.success) throw new Error(data.error || 'Failed to load orders');
     return data.orders;
@@ -635,7 +501,9 @@ export const api = {
 
   // POPIA Section 14 Compliance (Data Export & Account Erasure)
   async exportCustomerData(customerId: string): Promise<any> {
-    const res = await fetch(`/api/customer/export-data?customerId=${encodeURIComponent(customerId)}`);
+    const res = await fetch(`/api/customer/export-data?customerId=${encodeURIComponent(customerId)}`, {
+      headers: this.getCustomerAuthHeaders({ customerId }),
+    });
     const data = await res.json();
     if (!data.success) throw new Error(data.error || 'Failed to export customer data archive');
     return data.data;
@@ -644,7 +512,7 @@ export const api = {
   async deleteCustomerAccount(customerId: string): Promise<{ success: boolean; message: string }> {
     const res = await fetch('/api/customer/delete-account', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.getCustomerAuthHeaders({ customerId }),
       body: JSON.stringify({ customerId, confirmation: 'PERMANENTLY_DELETE' }),
     });
     const data = await res.json();

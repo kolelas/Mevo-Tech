@@ -1,12 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { CustomerAccount, CustomerAuthProvider, ShippingAddress, User, UserRole } from '../types';
+import { CustomerAccount, CustomerAuthProvider, ShippingAddress, User } from '../types';
 import { api } from '../services/api';
 
 interface AuthContextType {
   currentUser: User;
-  switchRole: (role: UserRole) => void;
-  isAdmin: boolean;
-  isFulfilment: boolean;
 
   // Customer Account
   customer: CustomerAccount | null;
@@ -39,13 +36,6 @@ interface AuthContextType {
   openAuthModal: (tab?: 'login' | 'register', forCheckout?: boolean) => void;
   checkoutIntent: boolean;
   setCheckoutIntent: (intent: boolean) => void;
-
-  // Admin Portal Secure Authentication
-  adminUser: User | null;
-  isAdminLoggedIn: boolean;
-  isCheckingAdminSession: boolean;
-  adminLogin: (username: string, password: string) => Promise<User>;
-  adminLogout: () => Promise<void>;
 }
 
 const DEFAULT_CUSTOMER_USER: User = {
@@ -57,33 +47,14 @@ const DEFAULT_CUSTOMER_USER: User = {
   createdAt: '2026-03-01T08:00:00Z',
 };
 
-const DEFAULT_AUTHENTICATED_ADMIN: User = {
-  id: 'usr_owner',
-  email: 'owner@mevotech.co.za',
-  name: 'Mevo Executive Admin',
-  role: 'owner',
-  phone: '+27 82 555 0100',
-  createdAt: '2026-01-15T08:00:00Z',
-};
-
 const CUSTOMER_SESSION_KEY = 'mevo_tech_customer_session_v2';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User>(DEFAULT_CUSTOMER_USER);
-  const [adminUser, setAdminUser] = useState<User | null>(() => {
-    try {
-      const stored = localStorage.getItem('mevo_admin_session_active');
-      if (stored === 'false') return null;
-      return DEFAULT_AUTHENTICATED_ADMIN;
-    } catch {
-      return DEFAULT_AUTHENTICATED_ADMIN;
-    }
-  });
-  const [isCheckingAdminSession, setIsCheckingAdminSession] = useState<boolean>(false);
 
-  // Customer Account State: Defaults strictly to null when no active session exists (No auto-logged-in demo user)
+  // Customer Account State: Defaults strictly to null when no active session exists
   const [customer, setCustomer] = useState<CustomerAccount | null>(() => {
     try {
       const stored = localStorage.getItem(CUSTOMER_SESSION_KEY);
@@ -109,7 +80,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Save customer session to localStorage
   useEffect(() => {
     if (customer) {
-      localStorage.setItem(CUSTOMER_SESSION_KEY, JSON.stringify(customer));
+      try {
+        localStorage.setItem(CUSTOMER_SESSION_KEY, JSON.stringify(customer));
+      } catch {
+        // ignore storage errors
+      }
       setCurrentUser({
         id: customer.id,
         email: customer.email,
@@ -119,41 +94,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         createdAt: customer.createdAt,
       });
     } else {
-      localStorage.removeItem(CUSTOMER_SESSION_KEY);
+      try {
+        localStorage.removeItem(CUSTOMER_SESSION_KEY);
+      } catch {
+        // ignore
+      }
       setCurrentUser(DEFAULT_CUSTOMER_USER);
     }
   }, [customer]);
-
-  // Check persistent admin session on mount
-  useEffect(() => {
-    let isMounted = true;
-    const verifySession = async () => {
-      try {
-        let sessionUser = await api.getAdminSession();
-        if (!sessionUser) {
-          const storedLogout = localStorage.getItem('mevo_admin_session_active');
-          if (storedLogout !== 'false') {
-            const loginRes = await api.adminLogin('admin', 'MevoTech@2026!');
-            sessionUser = loginRes.user;
-          }
-        }
-        if (isMounted && sessionUser) {
-          setAdminUser(sessionUser);
-        }
-      } catch (err) {
-        console.warn('Admin session check failed', err);
-      } finally {
-        if (isMounted) {
-          setIsCheckingAdminSession(false);
-        }
-      }
-    };
-
-    verifySession();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
 
   const customerLogin = useCallback(async (email: string, password: string): Promise<CustomerAccount> => {
     const res = await api.loginCustomer(email, password);
@@ -203,6 +151,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const customerLogout = useCallback(() => {
+    api.setCustomerToken(null);
     setCustomer(null);
   }, []);
 
@@ -213,51 +162,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return updated;
   }, [customer]);
 
-  const adminLogin = useCallback(async (username: string, password: string): Promise<User> => {
-    const result = await api.adminLogin(username, password);
-    try {
-      localStorage.setItem('mevo_admin_session_active', 'true');
-    } catch {
-      // ignore
-    }
-    setAdminUser(result.user);
-    return result.user;
-  }, []);
-
-  const adminLogout = useCallback(async (): Promise<void> => {
-    try {
-      localStorage.setItem('mevo_admin_session_active', 'false');
-      await api.adminLogout();
-    } catch {
-      // ignore
-    }
-    setAdminUser(null);
-  }, []);
-
-  const switchRole = (role: UserRole) => {
-    setCurrentUser({
-      id: `usr_${role}`,
-      email: `${role}@mevotech.co.za`,
-      name: role.charAt(0).toUpperCase() + role.slice(1).replace('_', ' '),
-      role,
-      phone: '+27 82 555 0100',
-      createdAt: '2026-01-15T08:00:00Z',
-    });
-  };
-
   const isCustomerLoggedIn = !!customer;
-  const isAdminLoggedIn = !!adminUser;
-  // Strict admin gate: NO EXCEPTIONS, must have authenticated adminUser
-  const isAdmin = isAdminLoggedIn;
-  const isFulfilment = isAdminLoggedIn && (adminUser?.role === 'owner' || adminUser?.role === 'admin' || adminUser?.role === 'fulfilment_manager' || adminUser?.role === 'inventory_manager');
 
   return (
     <AuthContext.Provider
       value={{
         currentUser,
-        switchRole,
-        isAdmin,
-        isFulfilment,
         customer,
         isCustomerLoggedIn,
         customerLogin,
@@ -274,11 +184,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         openAuthModal,
         checkoutIntent,
         setCheckoutIntent,
-        adminUser,
-        isAdminLoggedIn,
-        isCheckingAdminSession,
-        adminLogin,
-        adminLogout,
       }}
     >
       {children}

@@ -3,30 +3,80 @@ import { db } from './db';
 import { getPaymentProvider } from './payment';
 import { calculateCartTotals, generateOrderReference, verifyPaymentAmount } from '../utils/calculations';
 import { Order, OrderItemSnapshot, PaymentAttempt, PaymentProvider, AuditLogEntry } from '../types';
-import { authRateLimiter, checkoutRateLimiter, emailFormRateLimiter, verifyCustomerToken, sanitizeCustomerProfileUpdates } from './security';
+import {
+  apiRateLimiter,
+  authRateLimiter,
+  checkoutRateLimiter,
+  emailFormRateLimiter,
+  verifyCustomerToken,
+  sanitizeCustomerProfileUpdates,
+} from './security';
 
 export const apiRouter = Router();
+
+/**
+ * Extracts verified customer identity and browser cart session ID from request headers/JWT.
+ */
+function getRequesterContext(req: Request): {
+  authenticatedCustomerId?: string;
+  authenticatedEmail?: string;
+  sessionId?: string;
+} {
+  let authenticatedCustomerId: string | undefined;
+  let authenticatedEmail: string | undefined;
+
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const custToken = authHeader.substring(7).trim();
+    const decoded = verifyCustomerToken(custToken);
+    if (decoded) {
+      authenticatedCustomerId = decoded.customerId;
+      authenticatedEmail = decoded.email;
+    }
+  }
+
+  if (!authenticatedCustomerId) {
+    const headerCustId = req.headers['x-customer-id'] as string | undefined;
+    if (headerCustId && headerCustId.trim() !== '') {
+      authenticatedCustomerId = headerCustId.trim();
+    }
+  }
+
+  if (!authenticatedEmail) {
+    const headerEmail = req.headers['x-customer-email'] as string | undefined;
+    if (headerEmail && headerEmail.trim() !== '') {
+      authenticatedEmail = headerEmail.trim().toLowerCase();
+    }
+  }
+
+  const rawSession =
+    (req.headers['x-cart-session-id'] as string | undefined) ||
+    (req.query.sessionId as string | undefined) ||
+    (typeof req.body?.sessionId === 'string' ? req.body.sessionId : undefined);
+
+  return {
+    authenticatedCustomerId,
+    authenticatedEmail,
+    sessionId: rawSession && rawSession.trim() !== '' ? rawSession.trim() : undefined,
+  };
+}
 
 /**
  * Principle 5: Check who owns it before update or delete.
  * Verifies that the caller owns the targeted customer resource.
  */
 function verifyCustomerOwnership(req: Request, targetCustomerId?: string, targetEmail?: string): boolean {
-  const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const custToken = authHeader.substring(7).trim();
-    const decoded = verifyCustomerToken(custToken);
-    if (decoded) {
-      if (targetCustomerId && decoded.customerId === targetCustomerId) return true;
-      if (targetEmail && decoded.email.toLowerCase() === targetEmail.toLowerCase()) return true;
-    }
+  const ctx = getRequesterContext(req);
+  if (targetCustomerId && ctx.authenticatedCustomerId && ctx.authenticatedCustomerId === targetCustomerId) {
+    return true;
   }
-
-  const headerCustId = req.headers['x-customer-id'] as string | undefined;
-  const headerEmail = req.headers['x-customer-email'] as string | undefined;
-  if (headerCustId && targetCustomerId && headerCustId === targetCustomerId) return true;
-  if (headerEmail && targetEmail && headerEmail.toLowerCase() === targetEmail.toLowerCase()) return true;
-
+  if (
+    targetEmail &&
+    ctx.authenticatedEmail &&
+    ctx.authenticatedEmail.toLowerCase() === targetEmail.trim().toLowerCase()
+  ) {
+    return true;
+  }
   return false;
 }
 
@@ -136,6 +186,191 @@ apiRouter.post('/cart/validate', (req: Request, res: Response) => {
       appliedDiscount: coupon && coupon.isActive ? coupon : null,
       shippingMethod: selectedShipping,
     });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ---- Abandoned Cart Tracking & Recovery API ----
+
+apiRouter.post('/cart/sync', apiRateLimiter, (req: Request, res: Response) => {
+  try {
+    const ctx = getRequesterContext(req);
+    const {
+      sessionId: bodySessionId,
+      items,
+      discountCode,
+      customerEmail,
+      customerName,
+      customerPhone,
+      customerId: requestedCustomerId,
+    } = req.body || {};
+
+    const sessionId = (typeof bodySessionId === 'string' && bodySessionId.trim()) || ctx.sessionId;
+    if (!sessionId) {
+      return res.status(400).json({ success: false, error: 'sessionId is required to sync cart' });
+    }
+    if (!Array.isArray(items)) {
+      return res.status(400).json({ success: false, error: 'items must be an array' });
+    }
+
+    // Only bind customerId if requester owns that customer account
+    let verifiedCustomerId: string | undefined;
+    if (requestedCustomerId) {
+      if (!verifyCustomerOwnership(req, requestedCustomerId, customerEmail)) {
+        return res.status(403).json({
+          success: false,
+          error: 'Access denied: Cannot sync cart to another customer account.',
+        });
+      }
+      verifiedCustomerId = requestedCustomerId;
+    } else if (ctx.authenticatedCustomerId) {
+      verifiedCustomerId = ctx.authenticatedCustomerId;
+    }
+
+    const result = db.syncCartSession({
+      sessionId,
+      items,
+      discountCode,
+      customerId: verifiedCustomerId,
+      customerEmail: customerEmail || ctx.authenticatedEmail,
+      customerName,
+      customerPhone,
+    });
+
+    res.json(result);
+  } catch (error: any) {
+    res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+apiRouter.post('/cart/abandon', apiRateLimiter, (req: Request, res: Response) => {
+  try {
+    const ctx = getRequesterContext(req);
+    const { sessionId: bodySessionId, customerId: requestedCustomerId, customerEmail, reason } = req.body || {};
+    const sessionId = (typeof bodySessionId === 'string' && bodySessionId.trim()) || ctx.sessionId;
+
+    if (requestedCustomerId && !verifyCustomerOwnership(req, requestedCustomerId, customerEmail)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied: Cannot mark another customer cart abandoned.',
+      });
+    }
+
+    const verifiedCustomerId = requestedCustomerId || ctx.authenticatedCustomerId;
+    const targetEmail = customerEmail || ctx.authenticatedEmail;
+
+    if (!sessionId && !verifiedCustomerId && !targetEmail) {
+      return res.status(400).json({ success: false, error: 'sessionId or customer identity is required' });
+    }
+
+    const result = db.markCartAbandonedNow({
+      sessionId,
+      customerId: verifiedCustomerId,
+      customerEmail: targetEmail,
+      reason,
+    });
+
+    res.json({ success: true, captured: result.success, cart: result.cart });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+apiRouter.get('/cart/abandoned', apiRateLimiter, (req: Request, res: Response) => {
+  try {
+    const ctx = getRequesterContext(req);
+    const queryCustomerId = typeof req.query.customerId === 'string' ? req.query.customerId.trim() : undefined;
+    const queryEmail = typeof req.query.email === 'string' ? req.query.email.trim().toLowerCase() : undefined;
+    const includeActive = req.query.includeActive === 'true';
+
+    // Reject attempts to query another customer's abandoned carts explicitly
+    if ((queryCustomerId || queryEmail) && !verifyCustomerOwnership(req, queryCustomerId, queryEmail)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied: You can only view your own abandoned carts (Ownership check enforced).',
+      });
+    }
+
+    const customerId = queryCustomerId || ctx.authenticatedCustomerId;
+    const email = queryEmail || ctx.authenticatedEmail;
+    const sessionId = ctx.sessionId;
+
+    if (!customerId && !email && !sessionId) {
+      return res.json({ success: true, count: 0, carts: [] });
+    }
+
+    const carts = db.getAbandonedCartsForOwner({
+      customerId,
+      email,
+      sessionId,
+      includeActive,
+    });
+
+    res.json({ success: true, count: carts.length, carts });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+apiRouter.get('/cart/recover/:token', apiRateLimiter, (req: Request, res: Response) => {
+  try {
+    const result = db.getAbandonedCartByRecoveryToken(req.params.token);
+    if (!result.success || !result.data) {
+      const msg = result.error || 'Recovery token invalid';
+      const statusCode = msg.includes('expired') || msg.includes('already completed') ? 410 : 404;
+      return res.status(statusCode).json({ success: false, error: msg });
+    }
+
+    res.json({ success: true, ...result.data });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+apiRouter.post('/cart/abandoned/:id/remind', emailFormRateLimiter, (req: Request, res: Response) => {
+  try {
+    const ctx = getRequesterContext(req);
+    const { overrideEmail } = req.body || {};
+
+    const result = db.sendRecoveryReminder({
+      cartId: req.params.id,
+      authenticatedCustomerId: ctx.authenticatedCustomerId,
+      authenticatedEmail: ctx.authenticatedEmail,
+      sessionId: ctx.sessionId,
+      overrideEmail,
+    });
+
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json({ success: false, error: result.error });
+    }
+
+    res.json({
+      success: true,
+      cart: result.cart,
+      recoveryUrl: result.recoveryUrl,
+      message: result.message,
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+apiRouter.delete('/cart/abandoned/:id', apiRateLimiter, (req: Request, res: Response) => {
+  try {
+    const ctx = getRequesterContext(req);
+    const result = db.dismissAbandonedCart({
+      cartId: req.params.id,
+      authenticatedCustomerId: ctx.authenticatedCustomerId,
+      authenticatedEmail: ctx.authenticatedEmail,
+      sessionId: ctx.sessionId,
+    });
+
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json({ success: false, error: result.error });
+    }
+
+    res.json({ success: true, message: 'Saved cart dismissed successfully.' });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -324,7 +559,7 @@ apiRouter.post('/checkout/create-order', checkoutRateLimiter, (req: Request, res
       updatedAt: now,
     };
 
-    db.createOrder(order);
+    db.createOrder(order, sessionId);
 
     res.json({ success: true, order });
   } catch (error: any) {
@@ -1063,4 +1298,7 @@ apiRouter.post('/products/:productId/simulate-price-drop', (req: Request, res: R
   }
 });
 
-
+// Ensure unknown /api/* paths always return structured JSON (never empty body or HTML)
+apiRouter.use((_req: Request, res: Response) => {
+  res.status(404).json({ success: false, error: 'API endpoint not found' });
+});

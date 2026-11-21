@@ -2,8 +2,7 @@ import React, { useState } from 'react';
 import { Order, OrderStatus } from '../types';
 import { formatZAR } from '../utils/calculations';
 import { api } from '../services/api';
-import { Search, Truck, CheckCircle2, Clock, AlertCircle, Package, ExternalLink } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { Search, Truck, AlertCircle, ExternalLink } from 'lucide-react';
 
 interface OrderTrackingViewProps {
   initialOrder?: Order | null;
@@ -13,7 +12,6 @@ interface OrderTrackingViewProps {
 const LIFECYCLE_STEPS: OrderStatus[] = ['PENDING_PAYMENT', 'PAID', 'PROCESSING', 'SHIPPED', 'DELIVERED'];
 
 export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({ initialOrder, onBackToShopping }) => {
-  const { isFulfilment } = useAuth();
   const [order, setOrder] = useState<Order | null>(initialOrder || null);
   const [referenceInput, setReferenceInput] = useState('');
   const [emailInput, setEmailInput] = useState('');
@@ -37,15 +35,6 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({ initialOrd
     }
   };
 
-  const handleQuickStatusUpdate = async (nextStatus: OrderStatus) => {
-    if (!order) return;
-    try {
-      const updated = await api.updateOrderStatus(order.reference, nextStatus, `Updated via tracking portal preview`);
-      setOrder(updated);
-    } catch (e: any) {
-      setError(e.message);
-    }
-  };
 
   const currentStepIndex = order ? LIFECYCLE_STEPS.indexOf(order.status) : -1;
 
@@ -230,37 +219,6 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({ initialOrd
                 </div>
               </div>
             </div>
-
-            {/* Warehouse Manager Sandbox simulation buttons */}
-            {isFulfilment && (
-              <div className="mt-6 pt-4 border-t border-neutral-200/60 bg-orange-50/50 -mx-6 -mb-6 p-4 rounded-b-2xl">
-                <p className="text-xs font-bold text-orange-900 mb-2">Warehouse Sandbox Controls:</p>
-                <div className="flex flex-wrap gap-2 text-xs">
-                  <button
-                    onClick={() => handleQuickStatusUpdate('PROCESSING')}
-                    className="px-3 py-1.5 bg-white border border-orange-200 text-orange-700 rounded-md font-semibold hover:bg-orange-100"
-                  >
-                    Mark Processing
-                  </button>
-                  <button
-                    onClick={async () => {
-                      await api.updateOrderTracking(order.reference, 'The Courier Guy', `TCG-${Date.now().toString().slice(-6)}`);
-                      const refreshed = await api.getOrderByReference(order.reference);
-                      setOrder(refreshed);
-                    }}
-                    className="px-3 py-1.5 bg-orange-600 text-white rounded-md font-semibold hover:bg-orange-700"
-                  >
-                    Assign Waybill & Mark Shipped
-                  </button>
-                  <button
-                    onClick={() => handleQuickStatusUpdate('DELIVERED')}
-                    className="px-3 py-1.5 bg-emerald-600 text-white rounded-md font-semibold hover:bg-emerald-700"
-                  >
-                    Mark Delivered
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Itemized Order Line Items */}

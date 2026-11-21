@@ -1,8 +1,26 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { CartItem, Product, ProductVariant, CouponDiscount } from '../types';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
+import { AbandonedCart, CartItem, Product, ProductVariant, CouponDiscount } from '../types';
 import { api } from '../services/api';
+import { useAuth } from './AuthContext';
+
+interface RestoreCartResult {
+  success: boolean;
+  hasStockChanges: boolean;
+  suggestedCouponCode?: string;
+  itemCount?: number;
+  error?: string;
+}
+
+interface SaveCartResult {
+  success: boolean;
+  cart?: AbandonedCart;
+  recoveryUrl?: string;
+  message?: string;
+  error?: string;
+}
 
 interface CartContextType {
+  cartSessionId: string;
   items: CartItem[];
   itemCount: number;
   subtotalCents: number;
@@ -11,7 +29,15 @@ interface CartContextType {
   addItem: (product: Product, variant?: ProductVariant, quantity?: number) => void;
   updateQuantity: (sku: string, quantity: number) => void;
   removeItem: (sku: string) => void;
-  clearCart: () => void;
+  clearCart: (options?: { ordered?: boolean }) => void;
+  // Abandoned Cart state and recovery actions
+  abandonedCarts: AbandonedCart[];
+  isLoadingAbandonedCarts: boolean;
+  refreshAbandonedCarts: () => Promise<void>;
+  restoreAbandonedCart: (token: string) => Promise<RestoreCartResult>;
+  saveCartForLater: (overrideEmail?: string) => Promise<SaveCartResult>;
+  emailAbandonedCartReminder: (cartId: string, overrideEmail?: string) => Promise<SaveCartResult>;
+  dismissAbandonedCart: (cartId: string) => Promise<void>;
   // Wishlist state and actions
   wishlist: string[];
   wishlistCount: number;
@@ -36,8 +62,29 @@ const CartContext = createContext<CartContextType | undefined>(undefined);
 const CART_STORAGE_KEY = 'mevo_tech_cart_v1';
 const WISHLIST_STORAGE_KEY = 'mevo_tech_wishlist_v1';
 const COUPON_STORAGE_KEY = 'mevo_tech_coupon_v1';
+const CART_SESSION_ID_KEY = 'mevo_cart_session_id';
+
+function getOrCreateCartSessionId(): string {
+  try {
+    const existing = localStorage.getItem(CART_SESSION_ID_KEY);
+    if (existing && existing.trim() !== '') {
+      return existing;
+    }
+    const generated =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? `mevo_sess_${crypto.randomUUID()}`
+        : `mevo_sess_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+    localStorage.setItem(CART_SESSION_ID_KEY, generated);
+    return generated;
+  } catch {
+    return `mevo_sess_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+  }
+}
 
 export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { customer } = useAuth();
+  const [cartSessionId] = useState<string>(() => getOrCreateCartSessionId());
+
   const [items, setItems] = useState<CartItem[]>(() => {
     try {
       const stored = localStorage.getItem(CART_STORAGE_KEY);
@@ -71,6 +118,14 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [couponError, setCouponError] = useState<string | null>(null);
   const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
   const [activeCampaigns, setActiveCampaigns] = useState<CouponDiscount[]>([]);
+
+  // Abandoned Cart State
+  const [abandonedCarts, setAbandonedCarts] = useState<AbandonedCart[]>([]);
+  const [isLoadingAbandonedCarts, setIsLoadingAbandonedCarts] = useState(false);
+
+  // Track sync lifecycle so completing an order doesn't overwrite RECOVERED status with empty cart sync
+  const hasSyncedItemsRef = useRef<boolean>(items.length > 0);
+  const skipNextEmptySyncRef = useRef<boolean>(false);
 
   useEffect(() => {
     try {
@@ -112,6 +167,68 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     loadActiveCampaigns();
   }, [loadActiveCampaigns]);
+
+  const refreshAbandonedCarts = useCallback(async () => {
+    setIsLoadingAbandonedCarts(true);
+    try {
+      const carts = await api.getAbandonedCarts({
+        sessionId: cartSessionId,
+        customerId: customer?.id,
+        email: customer?.email,
+      });
+      setAbandonedCarts(carts);
+    } catch (err) {
+      console.warn('Could not load saved/abandoned carts', err);
+    } finally {
+      setIsLoadingAbandonedCarts(false);
+    }
+  }, [cartSessionId, customer?.id, customer?.email]);
+
+  useEffect(() => {
+    refreshAbandonedCarts();
+  }, [refreshAbandonedCarts]);
+
+  // Debounced server cart sync for abandoned cart detection & server-authoritative pricing
+  useEffect(() => {
+    if (items.length === 0) {
+      if (skipNextEmptySyncRef.current) {
+        skipNextEmptySyncRef.current = false;
+        hasSyncedItemsRef.current = false;
+        return;
+      }
+      if (!hasSyncedItemsRef.current) {
+        return;
+      }
+    }
+
+    const timer = setTimeout(() => {
+      if (items.length > 0) {
+        hasSyncedItemsRef.current = true;
+      } else {
+        hasSyncedItemsRef.current = false;
+      }
+
+      api
+        .syncCart({
+          sessionId: cartSessionId,
+          items: items.map((i) => ({
+            productId: i.productId,
+            variantId: i.variantId,
+            quantity: i.quantity,
+          })),
+          discountCode: appliedCoupon?.code,
+          customerId: customer?.id,
+          customerEmail: customer?.email,
+          customerName: customer?.name,
+          customerPhone: customer?.phone,
+        })
+        .catch((err) => {
+          console.warn('Background cart sync failed:', err);
+        });
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [items, appliedCoupon?.code, cartSessionId, customer?.id, customer?.email, customer?.name, customer?.phone]);
 
   const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
   const wishlistCount = wishlist.length;
@@ -221,11 +338,138 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setItems((prev) => prev.filter((i) => i.sku !== sku));
   };
 
-  const clearCart = () => {
+  const clearCart = (options?: { ordered?: boolean }) => {
+    if (options?.ordered) {
+      skipNextEmptySyncRef.current = true;
+    }
     setItems([]);
     setAppliedCoupon(null);
     setCouponError(null);
+    if (options?.ordered) {
+      refreshAbandonedCarts();
+    }
   };
+
+  const restoreAbandonedCart = useCallback(async (token: string): Promise<RestoreCartResult> => {
+    try {
+      const recovered = await api.recoverAbandonedCart(token);
+      setItems(recovered.items);
+      if (recovered.suggestedCoupon) {
+        setAppliedCoupon(recovered.suggestedCoupon);
+        setCouponError(null);
+      }
+      setIsDrawerOpen(true);
+      await refreshAbandonedCarts();
+      return {
+        success: true,
+        hasStockChanges: recovered.hasStockChanges,
+        suggestedCouponCode: recovered.suggestedCoupon?.code,
+        itemCount: recovered.items.reduce((s, i) => s + i.quantity, 0),
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        hasStockChanges: false,
+        error: err.message || 'Could not restore saved cart link',
+      };
+    }
+  }, [refreshAbandonedCarts]);
+
+  const saveCartForLater = useCallback(async (overrideEmail?: string): Promise<SaveCartResult> => {
+    if (items.length === 0) {
+      return { success: false, error: 'Your shopping bag is currently empty.' };
+    }
+
+    try {
+      const targetEmail = overrideEmail?.trim().toLowerCase() || customer?.email;
+      const synced = await api.syncCart({
+        sessionId: cartSessionId,
+        items: items.map((i) => ({
+          productId: i.productId,
+          variantId: i.variantId,
+          quantity: i.quantity,
+        })),
+        discountCode: appliedCoupon?.code,
+        customerId: customer?.id,
+        customerEmail: targetEmail,
+        customerName: customer?.name,
+        customerPhone: customer?.phone,
+      });
+
+      const abandoned = await api.markCartAbandoned({
+        sessionId: cartSessionId,
+        customerId: customer?.id,
+        customerEmail: targetEmail,
+        reason: 'Customer saved cart from shopping bag',
+      });
+
+      const savedCart = abandoned.cart || synced.cart;
+      if (!savedCart) {
+        return { success: false, error: 'Unable to save cart at this time.' };
+      }
+
+      if (targetEmail && targetEmail.includes('@')) {
+        const remind = await api.sendAbandonedCartReminder(savedCart.id, {
+          sessionId: cartSessionId,
+          customerId: customer?.id,
+          email: customer?.email,
+          overrideEmail: targetEmail,
+        });
+        await refreshAbandonedCarts();
+        return {
+          success: true,
+          cart: remind.cart,
+          recoveryUrl: remind.recoveryUrl,
+          message: remind.message,
+        };
+      }
+
+      await refreshAbandonedCarts();
+      return {
+        success: true,
+        cart: savedCart,
+        recoveryUrl: `/?recover_cart=${savedCart.recoveryToken}`,
+        message: 'Cart saved to your account. Use the recovery link anytime to resume.',
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err.message || 'Failed to save cart for later',
+      };
+    }
+  }, [items, cartSessionId, appliedCoupon?.code, customer?.id, customer?.email, customer?.name, customer?.phone, refreshAbandonedCarts]);
+
+  const emailAbandonedCartReminder = useCallback(async (cartId: string, overrideEmail?: string): Promise<SaveCartResult> => {
+    try {
+      const res = await api.sendAbandonedCartReminder(cartId, {
+        sessionId: cartSessionId,
+        customerId: customer?.id,
+        email: customer?.email,
+        overrideEmail,
+      });
+      await refreshAbandonedCarts();
+      return {
+        success: true,
+        cart: res.cart,
+        recoveryUrl: res.recoveryUrl,
+        message: res.message,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err.message || 'Failed to send recovery email',
+      };
+    }
+  }, [cartSessionId, customer?.id, customer?.email, refreshAbandonedCarts]);
+
+  const dismissAbandonedCart = useCallback(async (cartId: string) => {
+    await api.dismissAbandonedCart(cartId, {
+      sessionId: cartSessionId,
+      customerId: customer?.id,
+      email: customer?.email,
+    });
+    await refreshAbandonedCarts();
+  }, [cartSessionId, customer?.id, customer?.email, refreshAbandonedCarts]);
 
   const toggleWishlist = (productId: string) => {
     setWishlist((prev) =>
@@ -244,6 +488,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <CartContext.Provider
       value={{
+        cartSessionId,
         items,
         itemCount,
         subtotalCents,
@@ -253,6 +498,13 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateQuantity,
         removeItem,
         clearCart,
+        abandonedCarts,
+        isLoadingAbandonedCarts,
+        refreshAbandonedCarts,
+        restoreAbandonedCart,
+        saveCartForLater,
+        emailAbandonedCartReminder,
+        dismissAbandonedCart,
         wishlist,
         wishlistCount,
         isWishlistOpen,
@@ -280,4 +532,3 @@ export const useCart = () => {
   if (!context) throw new Error('useCart must be used within CartProvider');
   return context;
 };
-

@@ -28,9 +28,11 @@ const SA_PROVINCES = [
 
 export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, onOrderComplete }) => {
   const {
+    cartSessionId,
     items,
     subtotalCents,
     clearCart,
+    refreshAbandonedCarts,
     appliedCoupon,
     discountCents,
     couponError,
@@ -135,7 +137,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
         shippingMethodId,
         paymentMethod,
         discountCode: appliedCoupon?.code,
-        sessionId: `session_${Date.now()}`,
+        sessionId: cartSessionId,
         customerId: customer?.id,
       });
 
@@ -163,7 +165,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
       );
 
       if (outcome === 'SUCCESS') {
-        clearCart();
+        clearCart({ ordered: true });
         onClose();
         onOrderComplete(updatedOrder);
       } else {
@@ -176,13 +178,30 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
     }
   };
 
+  const handleExitCheckout = () => {
+    if (!pendingOrder && items.length > 0) {
+      api
+        .markCartAbandoned({
+          sessionId: cartSessionId,
+          customerId: customer.id,
+          customerEmail: shippingAddress.email || customer.email,
+          reason: 'Customer exited checkout prior to order placement',
+        })
+        .then(() => refreshAbandonedCarts())
+        .catch(() => {
+          // non-blocking capture
+        });
+    }
+    onClose();
+  };
+
   return createPortal(
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="checkout-dialog-title"
       className="fixed inset-0 z-[9999] bg-neutral-950/75 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 overflow-hidden"
-      onClick={onClose}
+      onClick={handleExitCheckout}
     >
       <div
         onClick={(e) => e.stopPropagation()}
@@ -216,7 +235,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
           {/* Prominent High-Contrast Close Button */}
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleExitCheckout}
             aria-label="Exit checkout"
             title="Close checkout dialog"
             className="w-9 h-9 rounded-full bg-neutral-100 hover:bg-neutral-200 text-neutral-700 hover:text-neutral-950 flex items-center justify-center transition-colors cursor-pointer shadow-xs shrink-0 ml-2"
@@ -801,7 +820,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={onClose}
+                onClick={handleExitCheckout}
                 className="py-2.5 px-4 rounded-xl border border-neutral-300 hover:bg-neutral-100 text-neutral-700 text-xs font-bold transition-colors cursor-pointer"
               >
                 Cancel &amp; Exit

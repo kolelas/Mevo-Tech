@@ -330,3 +330,64 @@ export interface PriceAlert {
   lastNotifiedPriceCents?: number;
 }
 
+export type AbandonedCartStatus = 'ACTIVE' | 'ABANDONED' | 'RECOVERED' | 'EXPIRED';
+
+export interface AbandonedCartItem {
+  productId: string;
+  variantId?: string;
+  sku: string;
+  name: string;
+  brand: string;
+  variantTitle?: string;
+  image: string;
+  unitPriceCents: number;
+  quantity: number;
+  lineTotalCents: number;
+  availableStock?: number;
+}
+
+export interface AbandonedCartReminderLog {
+  reminderNumber: number;
+  channel: 'email';
+  sentToEmail: string;
+  incentiveCode?: string;
+  sentAt: string;
+}
+
+export interface AbandonedCart {
+  id: string;
+  sessionId: string;
+  customerId?: string;
+  customerEmail?: string;
+  customerName?: string;
+  customerPhone?: string;
+  items: AbandonedCartItem[];
+  itemCount: number;
+  subtotalCents: number;
+  discountCode?: string;
+  discountCents: number;
+  estimatedTotalCents: number;
+  currency: 'ZAR';
+  status: AbandonedCartStatus;
+  recoveryToken: string;
+  recoveryIncentiveCode?: string;
+  reminderCount: number;
+  reminderHistory: AbandonedCartReminderLog[];
+  lastActivityAt: string;
+  abandonedAt?: string;
+  lastReminderSentAt?: string;
+  recoveredAt?: string;
+  recoveredOrderReference?: string;
+  expiresAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RecoveredCartResponse {
+  cart: AbandonedCart;
+  items: CartItem[];
+  suggestedCoupon: CouponDiscount | null;
+  hasStockChanges: boolean;
+}
+
+

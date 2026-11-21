@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { formatZAR, calculateIncludedVAT } from '../utils/calculations';
-import { X, Trash2, ShoppingBag, ArrowRight, ShieldCheck, Tag, Sparkles } from 'lucide-react';
+import { X, Trash2, ShoppingBag, ArrowRight, ShieldCheck, Tag, Mail, Bookmark, CheckCircle2 } from 'lucide-react';
 import { PaymentGatewaysRow } from './PaymentAndSocialBadges';
 
 interface CartDrawerProps {
@@ -10,7 +10,7 @@ interface CartDrawerProps {
 }
 
 export const CartDrawer: React.FC<CartDrawerProps> = ({ onProceedToCheckout }) => {
-  const { isCustomerLoggedIn, openAuthModal } = useAuth();
+  const { customer, isCustomerLoggedIn, openAuthModal } = useAuth();
   const {
     items,
     itemCount,
@@ -26,8 +26,17 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ onProceedToCheckout }) =
     applyCoupon,
     removeCoupon,
     activeCampaigns,
+    saveCartForLater,
   } = useCart();
   const [couponInput, setCouponInput] = useState('');
+  const [showSaveEmailForm, setShowSaveEmailForm] = useState(false);
+  const [saveEmailInput, setSaveEmailInput] = useState('');
+  const [isSavingCart, setIsSavingCart] = useState(false);
+  const [saveFeedback, setSaveFeedback] = useState<{
+    type: 'success' | 'error';
+    message: string;
+    recoveryUrl?: string;
+  } | null>(null);
 
   if (!isDrawerOpen) return null;
 
@@ -44,6 +53,27 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ onProceedToCheckout }) =
     const ok = await applyCoupon(couponInput.trim());
     if (ok) {
       setCouponInput('');
+    }
+  };
+
+  const handleSaveAndEmailCart = async (emailToUse?: string) => {
+    setIsSavingCart(true);
+    setSaveFeedback(null);
+    const res = await saveCartForLater(emailToUse);
+    setIsSavingCart(false);
+    if (res.success) {
+      setSaveFeedback({
+        type: 'success',
+        message: res.message || 'Shopping bag saved for later recovery.',
+        recoveryUrl: res.recoveryUrl,
+      });
+      setShowSaveEmailForm(false);
+      setSaveEmailInput('');
+    } else {
+      setSaveFeedback({
+        type: 'error',
+        message: res.error || 'Could not save cart link right now.',
+      });
     }
   };
 
@@ -316,6 +346,89 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ onProceedToCheckout }) =
                 <span>{!isCustomerLoggedIn ? 'Register / Sign In to Checkout' : 'Proceed to Checkout'}</span>
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </button>
+
+              {/* Save & Email Abandoned Cart Recovery Link */}
+              <div className="space-y-2">
+                {!showSaveEmailForm ? (
+                  <button
+                    type="button"
+                    disabled={isSavingCart}
+                    onClick={() => {
+                      if (isCustomerLoggedIn && customer?.email) {
+                        handleSaveAndEmailCart(customer.email);
+                      } else {
+                        setShowSaveEmailForm(true);
+                        setSaveFeedback(null);
+                      }
+                    }}
+                    className="w-full py-2 px-3 rounded-xl border border-neutral-300 bg-neutral-50 hover:bg-orange-50 hover:border-orange-300 text-neutral-700 hover:text-orange-800 text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <Bookmark className="w-3.5 h-3.5 text-orange-600" />
+                    <span>{isSavingCart ? 'Saving Cart & Queuing Link...' : 'Save & Email Cart Recovery Link'}</span>
+                  </button>
+                ) : (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (saveEmailInput.trim()) {
+                        handleSaveAndEmailCart(saveEmailInput.trim());
+                      }
+                    }}
+                    className="p-2.5 rounded-xl border border-orange-200 bg-orange-50/60 space-y-2"
+                  >
+                    <div className="flex items-center justify-between text-[11px] font-bold text-neutral-800">
+                      <span className="flex items-center gap-1">
+                        <Mail className="w-3.5 h-3.5 text-orange-600" />
+                        <span>Send me a cart recovery link</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowSaveEmailForm(false)}
+                        className="text-neutral-400 hover:text-neutral-700 cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <input
+                        type="email"
+                        required
+                        placeholder="you@example.co.za"
+                        value={saveEmailInput}
+                        onChange={(e) => setSaveEmailInput(e.target.value)}
+                        className="flex-1 px-2.5 py-1.5 text-xs bg-white border border-neutral-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-600"
+                      />
+                      <button
+                        type="submit"
+                        disabled={isSavingCart || !saveEmailInput.trim()}
+                        className="px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-xs font-bold cursor-pointer disabled:opacity-50 shrink-0"
+                      >
+                        {isSavingCart ? 'Sending...' : 'Send Link'}
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {saveFeedback && (
+                  <div
+                    className={`p-2.5 rounded-xl text-[11px] border flex items-start gap-2 ${
+                      saveFeedback.type === 'success'
+                        ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                        : 'bg-rose-50 border-rose-200 text-rose-700'
+                    }`}
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold leading-snug">{saveFeedback.message}</p>
+                      {saveFeedback.recoveryUrl && (
+                        <p className="font-mono text-[10px] text-emerald-700 truncate mt-0.5">
+                          Link: {saveFeedback.recoveryUrl}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
 
               <div className="flex items-center justify-center gap-2 text-[11px] text-neutral-400">
                 <ShieldCheck className="w-3.5 h-3.5 text-neutral-500" />
