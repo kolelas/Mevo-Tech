@@ -64,6 +64,8 @@ jobs:
         run: bun run lint
 
       - name: Automated tests
+        env:
+          TEST_DATABASE_URL: postgres://mevo_ci:mevo_ci_test_only@127.0.0.1:5432/mevo_ci
         run: bun run test
 
       - name: Production build
