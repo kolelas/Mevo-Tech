@@ -627,9 +627,14 @@ apiRouter.post('/payments/:provider/webhook', async (req: Request, res: Response
     const providerId = req.params.provider as PaymentProvider;
     const provider = getPaymentProvider(providerId);
 
+    // Paystack signatures must be calculated over the original JSON bytes, not a re-serialized object.
+    const rawBody = (req as Request & { rawBody?: string }).rawBody;
+    const webhookBody = providerId === 'paystack'
+      ? (rawBody || '')
+      : req.body;
     const verification = await provider.verifyWebhook(
       req.headers as Record<string, string>,
-      req.body
+      webhookBody
     );
 
     if (!verification.isValid || !verification.signatureVerified) {
