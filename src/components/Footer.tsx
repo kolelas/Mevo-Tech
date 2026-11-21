@@ -140,7 +140,17 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
 
         {/* Bottom copyright */}
         <div className="pt-8 flex flex-col md:flex-row items-center justify-between text-xs text-neutral-500 gap-4">
-          <p>© {new Date().getFullYear()} Mevo Tech (Pty) Ltd. Reg No: 2024/091823/07. All rights reserved.</p>
+          <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2">
+            <p>© {new Date().getFullYear()} Mevo Tech (Pty) Ltd. Reg No: 2024/091823/07. All rights reserved.</p>
+            <span aria-hidden="true" className="text-neutral-700">|</span>
+            <a
+              href="/#admin"
+              className="font-semibold text-violet-400 hover:text-violet-300 transition-colors"
+              aria-label="Open Mevo Tech Admin Control Centre"
+            >
+              Admin Portal
+            </a>
+          </div>
           <div className="flex items-center gap-2 text-neutral-400 text-xs">
             <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
             <span>Sandton Depot Secure Dispatch · 100% Guaranteed Delivery</span>
