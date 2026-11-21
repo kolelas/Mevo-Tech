@@ -8,7 +8,7 @@ Scope: backend, customer account workspace, and security. The storefront is expl
 - Price-alert deletion requires a signed customer session and resource ownership.
 - Price-alert creation is bound to authenticated customer identity (no caller-provided email/customer ID).
 - Product reviews require authentication and an order containing the product, and server-derived identity; input lengths/rating validated.
-- Duplicate successful webhook callbacks on already-paid orders are safely ignored and logged (basic state-level duplicate guard; not a substitute for durable provider-event idempotency).
+- Webhook callbacks against already-paid orders are ignored and logged to prevent status downgrades (basic state-level guard; not a substitute for durable provider-event idempotency).
 - Checkout item quantities must be integer values in a bounded range and invalid variants are rejected.
 - Cart validation now rejects malformed/non-bounded quantities and invalid variant IDs instead of silently pricing invalid variants as base products.
 - Public product-review responses now use a narrow projection and omit internal customer IDs, customer emails, and moderation/internal fields.
