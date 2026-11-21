@@ -1,15 +1,15 @@
-# Multi-stage production container for Mevo Tech (React 19 + Express + TS)
+# Multi-stage production container for Mevo Tech (React 19 + Express + TypeScript).
+# This repository uses Bun's lockfile, not package-lock.json, so npm ci cannot run here.
 FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm ci
+COPY package.json ./
+RUN npm install --no-audit --no-fund
 
 COPY . .
 RUN npm run build
 
-# Final lightweight runner
 FROM node:22-alpine AS runner
 
 WORKDIR /app
@@ -17,8 +17,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 
-COPY package*.json ./
-RUN npm ci --omit=dev && npm install tsx
+COPY package.json ./
+RUN npm install --omit=dev --no-audit --no-fund \
+    && npm install --no-save --no-audit --no-fund tsx
 
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/public ./public
