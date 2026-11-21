@@ -1139,21 +1139,31 @@ apiRouter.get('/products/:id/reviews', (req: Request, res: Response) => {
 
 apiRouter.post('/products/:id/reviews', (req: Request, res: Response) => {
   try {
-    const { authorName, rating, title, comment, userId, customerEmail } = req.body;
-    if (!authorName || !rating || !title || !comment) {
-      return res.status(400).json({ success: false, error: 'Author name, rating (1-5), title, and comment are required' });
+    const ctx = getRequesterContext(req);
+    if (!ctx.authenticatedCustomerId || !ctx.authenticatedEmail) {
+      return res.status(401).json({ success: false, error: 'Sign in to submit a product review.' });
     }
-
+    const { rating, title, comment } = req.body;
+    if (!Number.isInteger(Number(rating)) || Number(rating) < 1 || Number(rating) > 5 || typeof title !== 'string' || typeof comment !== 'string' || !title.trim() || !comment.trim()) {
+      return res.status(400).json({ success: false, error: 'A rating from 1–5, title, and comment are required.' });
+    }
+    const ownedOrders = db.getCustomerOrders(ctx.authenticatedCustomerId);
+    const purchased = ownedOrders.some((order) =>
+      ['PAID', 'PROCESSING', 'SHIPPED', 'DELIVERED'].includes(order.status) &&
+      order.items.some((item) => item.productId === req.params.id)
+    );
+    if (!purchased) {
+      return res.status(403).json({ success: false, error: 'A verified order containing this product is required to review it.' });
+    }
     const result = db.addReview({
       productId: req.params.id,
-      userId,
-      authorName,
+      userId: ctx.authenticatedCustomerId,
+      authorName: ctx.authenticatedEmail,
       rating: Number(rating),
-      title,
-      comment,
-      customerEmail,
+      title: title.trim().slice(0, 120),
+      comment: comment.trim().slice(0, 2000),
+      customerEmail: ctx.authenticatedEmail,
     });
-
     res.json(result);
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -1164,21 +1174,18 @@ apiRouter.post('/products/:id/reviews', (req: Request, res: Response) => {
 
 apiRouter.post('/products/:productId/price-alerts', emailFormRateLimiter, (req: Request, res: Response) => {
   try {
-    const { productId } = req.params;
-    const { email, targetType = 'any', customTargetPriceCents, customerId } = req.body;
-
-    if (!email) {
-      return res.status(400).json({ success: false, error: 'Valid email address is required.' });
+    const ctx = getRequesterContext(req);
+    if (!ctx.authenticatedCustomerId || !ctx.authenticatedEmail) {
+      return res.status(401).json({ success: false, error: 'Sign in to create a price alert.' });
     }
-
+    const { targetType = 'any', customTargetPriceCents } = req.body || {};
     const result = db.createPriceAlert({
-      productId,
-      email,
+      productId: req.params.productId,
+      email: ctx.authenticatedEmail,
       targetType,
       customTargetPriceCents: customTargetPriceCents ? Number(customTargetPriceCents) : undefined,
-      customerId,
+      customerId: ctx.authenticatedCustomerId,
     });
-
     res.json(result);
   } catch (error: any) {
     res.status(400).json({ success: false, error: error.message });
