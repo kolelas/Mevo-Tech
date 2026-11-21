@@ -1,7 +1,6 @@
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { createServer as createViteServer } from 'vite';
 import helmet from 'helmet';
 import { apiRouter } from './src/server/api';
 import { apiRateLimiter } from './src/server/security';
@@ -102,6 +101,7 @@ async function startServer() {
     });
   } else {
     // Vite middleware for development
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true, host: '0.0.0.0' },
       appType: 'spa',
