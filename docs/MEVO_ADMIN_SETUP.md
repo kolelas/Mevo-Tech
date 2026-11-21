@@ -89,3 +89,20 @@ All routes are PostgreSQL-only. They do not read or mutate the legacy Maps store
 - `GET /api/admin/customers` — requires `customers.read`; bounded pagination, optional email/name search and status filter.
 - `GET /api/admin/customers/:customerId` — requires `customers.read`; narrow customer identity/status projection.
 - `GET /api/admin/payments/attempts` — requires `payments.read` (owner/admin only); bounded payment-attempt history and optional status filter. This is read-only and does not alter payment/order state.
+
+
+## Admin Control Centre web interface
+
+The protected React administrator interface is available at `/admin` (for example, `https://your-staging-host/admin`). The storefront route and storefront components are kept separate; the admin interface is mounted by the application router only for the `/admin` path.
+
+1. Enable the Google sign-in provider in Firebase Authentication for the same Firebase project used by `src/lib/firebase.ts`.
+2. Add the staging hostname to Firebase Authentication's authorized domains.
+3. Configure the server environment listed above, including the staging PostgreSQL URL and Firebase Admin service credentials.
+4. Apply migrations 001–006 to the staging database only.
+5. Create a verified Firebase user for the initial owner, then bootstrap its UID and email using the SQL statement above.
+6. Open `/admin`, choose **Continue with Google**, and sign in using that owner account. The browser obtains a Firebase ID token; the server independently verifies it and resolves the enabled database role before returning the admin session.
+7. Confirm each visible section matches the permissions returned by `GET /api/admin/session`. Mutating actions remain server-authorized and are written to the audit trail.
+
+The interface currently provides PostgreSQL-backed catalogue visibility updates, stock adjustments, order fulfilment transitions, support-case status updates, customer and payment views, audit history, and owner-only role grants. It intentionally labels the dashboard as foundation/staging data: the legacy storefront's in-memory catalogue, customer records and orders have not been migrated into PostgreSQL. Empty admin tables are therefore not a reliable view of live storefront activity.
+
+The interface is not production-ready until a staging deployment, Firebase sign-in, role bootstrap, database migrations, and end-to-end checks have all been completed. No production data migration, deployment, or storefront change is performed by this branch.
