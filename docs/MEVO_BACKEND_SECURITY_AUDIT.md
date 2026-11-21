@@ -166,3 +166,10 @@ Added permission-checked PostgreSQL read routes for the catalogue (`catalog.read
 Added least-privilege, database-backed administrator mutations for product edits and inventory adjustments. Product field names are allowlisted and values validated; price fields are integer cents and promotional pricing is checked against regular pricing under a row lock. Inventory adjustments use a row lock and reject stock reductions below reserved inventory. Each successful mutation and its audit event (plus inventory movement for stock changes) share one PostgreSQL transaction. Any thrown database error rolls back the transaction. Customer-support roles are denied write permissions by the existing permission matrix.
 
 Remaining limitations: no bulk catalogue import, inventory reservation lifecycle integration, supplier/warehouse workflows, order fulfilment mutations, or customer support case management is exposed yet. PostgreSQL remains opt-in and the legacy Maps runtime has not been cut over.
+
+
+## Order fulfilment, support and audit API foundation
+
+Added migration 006 and protected PostgreSQL routes for order listing and controlled fulfilment transitions, support case intake/queue/updates, and restricted audit event reads. Fulfilment transitions are row-locked and recorded in order status history plus the audit ledger in one transaction. Support case changes are recorded in both case history and audit ledger. Audit access is restricted to owner/admin roles.
+
+Remaining cutover limitations are significant: the active storefront/checkout/order runtime still uses in-memory Maps; PostgreSQL records are not synchronized with existing live orders/products/customers; support contact submissions are not yet wired into the case table; and provider reconciliation, stock reservation lifecycle, and end-to-end customer order persistence are not complete. Do not deploy the new PostgreSQL-backed admin workflows against production until a reviewed data migration, backup/restore rehearsal, payment-provider verification, identity bootstrap, and staging acceptance test have been completed.
