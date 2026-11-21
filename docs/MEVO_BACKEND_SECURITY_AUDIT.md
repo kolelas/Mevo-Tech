@@ -11,6 +11,7 @@ Scope: backend, customer account workspace, and security. The storefront is expl
 - Duplicate successful webhook callbacks on already-paid orders are safely ignored and logged (basic state-level duplicate guard; not a substitute for durable provider-event idempotency).
 - Checkout item quantities must be integer values in a bounded range and invalid variants are rejected.
 - Cart validation now rejects malformed/non-bounded quantities and invalid variant IDs instead of silently pricing invalid variants as base products.
+- Public product-review responses now use a narrow projection and omit internal customer IDs, customer emails, and moderation/internal fields.
 
 ## Remaining high-risk work (not yet complete)
 1. Durable webhook idempotency: persist provider event/transaction IDs with uniqueness constraints and transactionally update order/payment/stock state. Current in-memory order state cannot provide cross-process or restart guarantees.
