@@ -1,0 +1,86 @@
+name: Mevo backend and account CI
+
+on:
+  push:
+    branches:
+      - main
+      - feature/mevo-commerce-os-foundation
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Typecheck, tests, PostgreSQL migrations, and production build
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: mevo_ci
+          POSTGRES_USER: mevo_ci
+          POSTGRES_PASSWORD: mevo_ci_test_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mevo_ci -d mevo_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
+
+      - name: Install dependencies
+        # The repository's existing bun.lock predates the current package.json; refresh it in CI.
+        run: bun install
+
+      - name: Apply additive commerce migrations to disposable CI database
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          PGDATABASE: mevo_ci
+          PGUSER: mevo_ci
+          PGPASSWORD: mevo_ci_test_only
+        run: |
+          psql -v ON_ERROR_STOP=1 -f src/server/data/migrations/001_commerce_foundation.sql
+          psql -v ON_ERROR_STOP=1 -f src/server/data/migrations/002_webhook_review_constraints.sql
+          psql -v ON_ERROR_STOP=1 -f src/server/migrations/003_persistence_rbac_payment_ledger.sql
+          psql -v ON_ERROR_STOP=1 -f src/server/migrations/004_payment_webhook_leases.sql
+          psql -v ON_ERROR_STOP=1 -f src/server/migrations/005_admin_owner_guard.sql
+          psql -v ON_ERROR_STOP=1 -f src/server/migrations/006_admin_operations.sql
+          psql -v ON_ERROR_STOP=1 -f src/server/migrations/007_commerce_runtime_replacement.sql
+          psql -v ON_ERROR_STOP=1 -f tests/sql/commerce_runtime.sql
+          psql -v ON_ERROR_STOP=1 -f tests/sql/admin_owner_guard.sql
+          psql -v ON_ERROR_STOP=1 -f tests/sql/admin_operations.sql
+          psql -v ON_ERROR_STOP=1 -f tests/sql/payment_webhook_leases.sql
+
+      - name: TypeScript validation
+        run: bun run lint
+
+      - name: Automated tests
+        env:
+          TEST_DATABASE_URL: postgres://mevo_ci:mevo_ci_test_only@127.0.0.1:5432/mevo_ci
+        run: bun run test
+
+      - name: Production build
+        run: bun run build
+
+      - name: Validate Cloudflare Worker bundle and configuration
+        run: bunx wrangler deploy --dry-run --outdir .wrangler/deploy
+
+      - name: Build production container
+        run: docker build --tag mevo-tech-ci .

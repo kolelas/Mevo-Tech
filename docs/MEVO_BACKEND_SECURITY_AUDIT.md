@@ -1,0 +1,178 @@
+# Mevo Tech Backend Security Audit — Development Branch
+
+Scope: backend, customer account workspace, and security. The storefront is explicitly out of scope and must not be redesigned, restyled, or refactored.
+
+## Remediations committed in this pass
+- Fail closed for social-login claims until provider tokens can be verified server-side.
+- Public order tracking now returns a minimal projection, with reduced status-history fields.
+- Price-alert deletion requires a signed customer session and resource ownership.
+- Price-alert creation is bound to authenticated customer identity (no caller-provided email/customer ID).
+- Product reviews require authentication and an order containing the product, and server-derived identity; input lengths/rating validated.
+- Webhook callbacks against already-paid orders are ignored and logged to prevent status downgrades (basic state-level guard; not a substitute for durable provider-event idempotency).
+- Checkout item quantities must be integer values in a bounded range and invalid variants are rejected.
+- Cart validation now rejects malformed/non-bounded quantities and invalid variant IDs instead of silently pricing invalid variants as base products.
+- Public product-review responses now use a narrow projection and omit internal customer IDs, customer emails, and moderation/internal fields.
+- Customer account deletion target is derived from verified session identity and requires explicit confirmation.
+- Customer profile updates now use a strict allowlist (name and phone only), bounded string values, and trim normalization; unknown fields are discarded.
+
+## Remaining high-risk work (not yet complete)
+- Protected administrator routes now exist for session/role management, PostgreSQL-backed catalogue and inventory reads, transactional product edits, and stock adjustments. Order fulfilment and customer-support case management APIs remain outstanding.
+1. Durable webhook idempotency: persist provider event/transaction IDs with uniqueness constraints and transactionally update order/payment/stock state. Current in-memory order state cannot provide cross-process or restart guarantees.
+2. Runtime persistence: the PostgreSQL schema foundation exists, but the runtime database implementation still uses in-memory Maps. Migration is not complete.
+3. Admin authorization: continue mapping legacy admin surfaces and migrate each operation behind the new verified-identity, database-role and permission middleware. Client UI role flags are not authorization.
+4. Authentication: opportunistic legacy plaintext-password upgrade on successful login exists in the in-memory authentication path; confirm coverage against persistent production records and eliminate legacy comparison once migration is complete. Review token expiry, revocation, and email-change flows.
+5. Checkout: transactional stock reservation/order creation, coupon usage, pricing, and shipping validations.
+6. Reviews: unique per-customer/product constraints, moderation, and verified-purchase criteria tied to successful payment/delivery. Current API check is a preliminary control.
+7. Payment provider validation: review each adapter's official signature, callback fields, amount/currency and transaction status; reconciliation and refund flows.
+8. Security tests: route-level tests for ownership, authentication, rate-limits, callback replay, payment amount mismatch, review authorization and account export/deletion.
+9. Account profile UI: regression-check only the customer workspace; no storefront changes.
+10. Deployment controls: production secrets, backups, restore test, logging, CI, dependency and vulnerability scanning.
+11. Cart validation remains advisory and must not be treated as the final checkout authority; stock and price must be rechecked transactionally at order creation.
+
+## Batch implementation groundwork (migration 003)
+- Added additive PostgreSQL tables for managed admin roles, unique provider webhook event IDs/transaction IDs, payment-attempt ledger, inventory reservations and order-status event history.
+- Migrations 001–005 are exercised in disposable CI PostgreSQL only; they have not been applied to production, and runtime commerce code is not switched to PostgreSQL. No production credentials or schema changes were performed.
+- The payment webhook endpoint is not yet using the new event ledger; event deduplication/processing must be implemented in a transaction and tested before production.
+- The administrator API is now wired to Firebase Admin ID-token verification and database-backed roles. Current PostgreSQL catalogue/inventory routes are permission-gated; continue migrating remaining admin operations individually. The frontend's admin path is not proof of authorization.
+- Checkout/stock/coupon/payment transitions remain in-memory and non-transactional until the runtime migration is complete.
+- Provider-specific webhook event IDs need reliable extraction from each adapter and reconciliation strategy before ledger adoption.
+- Review constraints remain SQL groundwork and are not wired to the active Maps runtime.
+
+## Firestore rules hardening in this pass\n- Admin checks now require verified email and support Firebase custom role claims (`owner`/`admin`) while retaining the legacy email allowlist for transition. This hybrid is transitional, not the final admin identity design.\n- Price-alert creation is now limited to signed-in Firebase users with verified email, matching the authenticated token email, a bounded product ID, an allowlisted payload shape, and ACTIVE initial state.\n- Customers can delete their own price-alert documents; admin updates remain restricted.\n- This rules patch has not been deployed or emulator-tested. The runtime/API may not use Firestore for these records.\n\n## Additional migration foundation committed
+- Added `002_webhook_review_constraints.sql`: a unique provider/event ID table to support durable webhook idempotency and persistent review constraints (unique customer/product/order, rating bounds, moderation state).
+- These constraints are groundwork only. They are not wired to the active in-memory runtime and have not been applied to a database.
+- Expanded cutover checklist at `docs/MEVO_BACKEND_SECURITY_AUDIT.md` to include transactional persistence, auth code delivery/expiry, account deletion/POPIA review, checkout concurrency, monitoring and staging.
+
+## Guardrails
+- Do not merge or deploy to production until test and staging verification is performed and explicitly approved.
+- Preserve the existing storefront untouched.
+
+
+## Payment adapter fail-closed remediation (latest)
+- Paystack webhook validation now fails closed if the secret is not configured; previously the unconfigured branch accepted the payload as valid.
+- Ozow and crypto webhook adapters now report invalid/unverified webhook authentication, preventing the API handler from accepting their payloads as verified payment notifications. These providers require real provider verification/reconciliation before being enabled for live checkout.
+- These code changes are not a substitute for provider-specific integration tests, raw-body handling, official verification, or reconciliation. No payment configuration or production environment was changed.
+
+
+## Paystack adapter hardening and tests (follow-up)
+- Paystack configuration no longer uses a built-in sample secret as a fallback. A blank secret remains unconfigured; sample/placeholder-like secrets are not treated as configured.
+- Paystack HMAC-SHA512 adapter comparison uses format validation and constant-time comparison.
+- Added adapter tests for valid/forged/malformed Paystack signatures and fail-closed unconfigured behavior, and for Ozow/crypto's currently unverified status.
+- Tests are added but have not been executed in this environment. Express raw-body capture, provider reconciliation, and end-to-end tests remain outstanding.
+
+
+## Raw-body webhook verification groundwork
+- Express JSON middleware now captures the exact original JSON payload bytes as `rawBody`.
+- The Paystack webhook handler now passes this captured body to its verification adapter instead of re-serializing parsed JSON, avoiding signature mismatch caused by JSON formatting changes.
+- Paystack signature format validation and timing-safe comparison are implemented in the adapter.
+- This is legacy `X-Paystack-Signature` verification; migration to the current signing-secret header format and timestamp/replay validation remains outstanding. Provider-event idempotency and transactional processing also remain outstanding.
+- These code changes are not tested or deployed in this environment.
+
+
+## Current Paystack signing-secret verification (latest)
+- Added support for the current `Paystack-Signature` header using the `PAYSTACK_WEBHOOK_SECRET` environment variable (must be the full `whsec_...` value).
+- Verifies the timestamped HMAC-SHA512 over `timestamp + "." + raw body`, enforces Paystack's ±300-second window, supports multiple `v1` signatures during secret rotation, and uses constant-time comparison.
+- If the current-format header is present but invalid, the adapter does not fall back to the deprecated header (prevents signature downgrade). If it is absent, legacy `X-Paystack-Signature` verification remains available using `PAYSTACK_SECRET_KEY` for migration.
+- Corrected adapter test import paths and added tests for the timestamped format, stale timestamps, malformed/duplicate timestamp fields, and downgrade resistance. The adapter test file is now included in the package test script.
+- Later CI runs have verified the adapter tests. This does not implement durable event idempotency, database transactions, or provider reconciliation. Configure the webhook signing secret only in the deployment environment after verifying the provider's test/live mode; no credentials were changed here.
+
+
+## Payment event and currency safeguards (latest)
+- Paystack order state changes are now limited to signed `charge.success` and `charge.failed` events. Other signed event families cannot be interpreted as checkout payment confirmation.
+- Paystack transaction amount must be a positive safe integer, and its currency is read from the signed event rather than assumed from local configuration.
+- The webhook handler now requires both amount and currency to match the order before marking it paid. Mismatches are placed on fulfilment hold and logged.
+- Payflex webhook handling now fails closed. The existing adapter had been treating caller-supplied status fields as verified without an authentication contract; those payloads can no longer mark orders paid.
+- Repaired malformed literal newline escapes in the payment-state guard in `src/server/api.ts`; this was a source-integrity correction, not a storefront change.
+- Adapter tests cover Paystack current/legacy signatures, stale timestamps, multiple signature entries, downgrade resistance, event allowlisting, currency extraction, and fail-closed behavior for Payflex/Ozow/crypto. Tests are configured but remain unexecuted.
+- PayFast and Payflex initiation adapters still contain placeholder/simulated behavior; do not enable live payment until provider APIs, webhook verification, transaction reconciliation, and end-to-end tests are completed.
+
+
+## Continuous integration verification (latest)
+- Added a GitHub Actions workflow for TypeScript validation, automated tests, and the Vite production build.
+- The run for commit `602349cf54757d3612cd7d0feddcb3468aab575b` completed successfully: typecheck passed, all 59 tests passed, and the production build completed.
+- CI surfaced and enabled correction of malformed raw-body middleware line breaks in `server.ts` and a TypeScript narrowing issue in the customer-orders route.
+- The repository's pre-existing `bun.lock` did not match `package.json`; CI currently runs `bun install` to refresh it in the runner. The refreshed lockfile is not committed yet, so frozen-lockfile installs remain a follow-up cleanup.
+- The build reports non-blocking warnings for `__dirname` in `vite.config.ts` and a JavaScript chunk above 500 kB. These are recorded for later build optimization and do not block this verification.
+- This CI result validates the current branch snapshot only; it is not staging, live payment, database migration, or production deployment approval.
+
+## Developer payment simulator access control (follow-up)
+- The simulated payment endpoint now remains unavailable in production and is additionally disabled in every environment unless `MEVO_ENABLE_PAYMENT_SIMULATOR=true` is explicitly set.
+- Requests are rate-limited, require a verified customer bearer session, and must match the order's customer ID. Invalid outcomes are rejected, and already-paid orders cannot be modified by the simulator.
+- Simulation audit entries identify the authenticated customer and clearly label the result as test-only; the simulator does not constitute provider confirmation.
+- This is a development/testing control only. It does not implement durable webhook idempotency or replace provider-side verification. Route-level tests and staging validation remain required.
+
+## Payment gateway configuration fail-closed follow-up
+- Removed built-in sample/sandbox merchant credentials from PayFast, Ozow, Payflex and crypto provider constructors. Missing credentials now leave the adapters unconfigured.
+- Provider configuration checks reject common sample/placeholder/sandbox values. The payment initiation route now returns HTTP 503 before creating a payment attempt when the selected provider is not configured.
+- PayFast webhook signature comparison now validates the expected hexadecimal signature format and uses a timing-safe comparison; verification also requires a configured provider.
+- Added adapter regression tests for PayFast valid/forged signatures and for default/placeholder gateway configuration.
+- Important: these safeguards do not make the currently stubbed provider initiation/refund flows production-ready. Ozow, Payflex and crypto webhook verification remain fail-closed; PayFast callback origin/provider reconciliation, amount checks, and route-level tests remain required. No provider secrets were added or changed.
+
+## PostgreSQL webhook lease migration groundwork
+- Added 004_payment_webhook_leases.sql with expiring worker leases, retry counts, payload-digest conflict detection, provider transaction uniqueness handling, and lease-token-guarded event completion functions.
+- The SQL claim function distinguishes new claims, already-processed duplicates, active concurrent processing, payload conflicts, and provider transaction collisions.
+- The migration is additive and is not applied. The active API still uses the in-memory Maps database and does not call these SQL functions. Durable replay protection is therefore NOT yet active; runtime PostgreSQL integration and a single transaction covering event claim, order/payment state, inventory, and event completion are mandatory before production.
+
+
+## PostgreSQL migration and webhook-lease CI coverage (follow-up)
+- Corrected the webhook claim function's unique-violation path: it now re-reads a concurrently inserted event and classifies same-event deliveries as duplicate, in-progress, payload-conflict, or an expired-lease reclaim. A reused provider transaction ID belonging to a different event remains a transaction conflict.
+- Added SQL integration assertions for initial claims, concurrent delivery, payload digest mismatch, lease-token ownership, completed-event replay, provider transaction collision, and expired-lease recovery/attempt counting.
+- CI now provisions a disposable PostgreSQL 16 service, applies migrations 003 and 004, and runs the SQL assertions before the TypeScript/test/build checks.
+- This tests the migration foundation in CI only. It does not apply any migration to a live database, wire PostgreSQL into the application runtime, or make webhook replay protection active in production. Runtime transaction integration remains a separate milestone.
+
+
+## PostgreSQL runtime foundation (opt-in; not yet the commerce system of record)
+- Added `src/server/postgres.ts` with validated `DATABASE_URL` parsing, a bounded connection pool, safe idle-client error logging, a connectivity probe, and a transaction helper that commits on success and attempts rollback on failure.
+- Production TLS certificate verification cannot be disabled through `PGSSL_REJECT_UNAUTHORIZED=false`. TLS mode can be explicitly configured with `PGSSLMODE`; do not disable TLS for production database connections.
+- Added the `pg` runtime dependency and PostgreSQL type definitions.
+- Added integration tests that use a disposable PostgreSQL database to verify connectivity, transaction commit, and rollback. CI supplies its isolated PostgreSQL service through `TEST_DATABASE_URL`.
+- The pool module is infrastructure only at this stage: it is not imported by the current API or Maps-backed database implementation. No customer, order, inventory, payment, or admin data is being written to PostgreSQL yet. Do not configure production `DATABASE_URL` expecting persistence until repositories and dual-read/write migration controls are implemented and validated.
+- Existing seeded/in-memory Maps remain the active runtime. The next migration step is repository-by-repository persistence with explicit schema mapping and transactional checkout/inventory/webhook boundaries; avoid a wholesale switch that could silently lose seeded or live data.
+
+
+## Database-backed admin authorization foundation
+- Added a server-side admin role resolver against the additive `admin_roles` table from migration 003.
+- Role lookup requires a verified identity-provider subject and verified email supplied by server-side token verification; it matches both stable user ID and normalized email, requires `enabled = TRUE`, and uses parameterized SQL.
+- Database errors, missing role records, unverified email, identity mismatch, disabled roles, and unknown role values all fail closed.
+- Added a least-privilege permission matrix for owner, admin, inventory manager, fulfilment manager, and customer support. Only the owner may manage admin roles.
+- Added unit coverage for identity validation, parameterization, fail-closed behavior, and role permissions, plus a disposable-PostgreSQL integration test for enabled/disabled role lookup and identity mismatch.
+- This authorization service is attached to the protected administrator HTTP router. No current admin UI flag or customer JWT is accepted as admin proof. Before any admin route is enabled, its authentication middleware must validate the actual identity-provider token server-side and pass the verified subject/email into this service. No admin endpoint, production role, or live database was changed.
+
+
+## Protected administrator API routes
+- Added Firebase Admin SDK ID-token verification for administrator sessions. Verification checks revocation and requires Firebase's `email_verified` claim; customer-session JWTs and client-supplied role flags are not accepted.
+- Added isolated `/api/admin/session` and owner-only `POST /api/admin/roles` routes. Role assignment uses parameterized SQL and records the verified actor's Firebase UID as `granted_by`.
+- Admin endpoints fail closed when PostgreSQL is not configured, Firebase credentials are missing/invalid, the Firebase token is invalid/revoked, the email is unverified, or no enabled database role matches the verified UID and email.
+- Firebase Admin credentials must be supplied through the hosting environment (service-account JSON or application-default/workload identity). No credentials are committed.
+- Added HTTP-level tests for missing database, invalid/missing/unregistered tokens, owner-only role grants, and invalid role input.
+- The router now also exposes permission-gated PostgreSQL catalogue and inventory reads, transactional product edits, and stock adjustments. Order fulfilment and customer-support case operations still require individual implementations.
+- The server creates a PostgreSQL pool only when `DATABASE_URL` is configured. This does not switch the existing Maps-based commerce runtime or apply migrations.
+
+
+## Administrator owner lockout protection
+- Added migration 005 with a database trigger that prevents disabling, deleting, or demoting the last enabled owner.
+- Added an owner-only endpoint to disable an administrator role. The endpoint maps the database's last-owner constraint to HTTP 409 and uses a parameterized update.
+- Added PostgreSQL integration assertions for the single-owner and multiple-owner cases. CI applies migration 005 and executes these assertions against its disposable PostgreSQL service.
+- Initial owner provisioning remains a deliberate manual operation after Firebase UID/email verification; no default owner, seeded identity, or backdoor is included.
+
+
+## Protected administrator data reads
+
+Added permission-checked PostgreSQL read routes for the catalogue (`catalog.read`) and inventory summary/movement ledger (`inventory.read`). The routes use the additive `mevo_products` and `mevo_inventory_movements` tables, parameterized filters, bounded pagination, and narrow response projections. They return PostgreSQL as the explicit source and do not fall back to Maps. This is not a persistence cutover: current customer/storefront runtime remains Maps-backed.
+
+
+## Transactional admin mutations
+
+Added least-privilege, database-backed administrator mutations for product edits and inventory adjustments. Product field names are allowlisted and values validated; price fields are integer cents and promotional pricing is checked against regular pricing under a row lock. Inventory adjustments use a row lock and reject stock reductions below reserved inventory. Each successful mutation and its audit event (plus inventory movement for stock changes) share one PostgreSQL transaction. Any thrown database error rolls back the transaction. Customer-support roles are denied write permissions by the existing permission matrix.
+
+Remaining limitations: no bulk catalogue import, inventory reservation lifecycle integration, supplier/warehouse workflows, order fulfilment mutations, or customer support case management is exposed yet. PostgreSQL remains opt-in and the legacy Maps runtime has not been cut over.
+
+
+## Order fulfilment, support and audit API foundation
+
+Added migration 006 and protected PostgreSQL routes for order listing and controlled fulfilment transitions, support case intake/queue/updates, and restricted audit event reads. Fulfilment transitions are row-locked and recorded in order status history plus the audit ledger in one transaction. Support case changes are recorded in both case history and audit ledger. Audit access is restricted to owner/admin roles.
+
+Remaining cutover limitations are significant: the active storefront/checkout/order runtime still uses in-memory Maps; PostgreSQL records are not synchronized with existing live orders/products/customers; support contact submissions are not yet wired into the case table; and provider reconciliation, stock reservation lifecycle, and end-to-end customer order persistence are not complete. Do not deploy the new PostgreSQL-backed admin workflows against production until a reviewed data migration, backup/restore rehearsal, payment-provider verification, identity bootstrap, and staging acceptance test have been completed.
+
+
+Added a bounded PostgreSQL customer directory and a read-only payment-attempt ledger endpoint. Customer support roles can read customer identity/status fields; payment-attempt history is restricted to owner/admin. No payment credentials or webhook secrets are returned. These routes still operate only on PostgreSQL records and are not synchronized with the active Maps runtime.

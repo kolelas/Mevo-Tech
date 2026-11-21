@@ -269,3 +269,18 @@ test('Security Principle 6: Keep secret keys out of the frontend', () => {
 
 
 
+
+
+test('Profile update sanitizer uses an allowlist and bounds string values', async () => {
+  const { sanitizeCustomerProfileUpdates } = await import('./security');
+  const safe = sanitizeCustomerProfileUpdates({ name: '  Customer  ', phone: '  +27 82 000 0000 ', favourites: ['p1'], arbitrary: 'value', role: 'admin', status: 'active', email: 'attacker@example.com', isPro: true, long: 'x'.repeat(201) });
+  assert.equal(safe.name, 'Customer');
+  assert.equal(safe.phone, '+27 82 000 0000');
+  assert.equal(safe.favourites, undefined);
+  assert.equal(safe.arbitrary, undefined);
+  assert.equal(safe.role, undefined);
+  assert.equal(safe.status, undefined);
+  assert.equal(safe.email, undefined);
+  assert.equal(safe.isPro, undefined);
+  assert.equal(safe.long, undefined);
+});

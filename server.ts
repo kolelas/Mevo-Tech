@@ -1,10 +1,12 @@
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { createServer as createViteServer } from 'vite';
 import helmet from 'helmet';
 import { apiRouter } from './src/server/api';
 import { apiRateLimiter } from './src/server/security';
+import { createAdminRouter } from './src/server/adminRoutes';
+import { createPostgresPool, getPostgresConfig } from './src/server/postgres';
+import { createCommerceRouter } from './src/server/commerceRoutes';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -12,6 +14,8 @@ const __dirname = path.dirname(__filename);
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
+  const postgresConfig = getPostgresConfig();
+  const postgresPool = postgresConfig ? createPostgresPool(postgresConfig) : null;
 
   // Trust proxy for accurate rate-limiting behind cloud load balancers
   app.set('trust proxy', 1);
@@ -26,14 +30,19 @@ async function startServer() {
   );
 
   // Middleware for JSON & form parsing
-  app.use(express.json({ limit: '2mb' }));
+  app.use(express.json({
+    limit: '2mb',
+    verify: (req, _res, buf) => {
+      // Preserve exact JSON bytes for cryptographic webhook verification.
+      (req as express.Request & { rawBody?: string }).rawBody = buf.toString('utf8');
+    },
+  }));
   app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
   // Health check
   app.get('/health', (_req, res) => {
     res.json({
       status: 'healthy',
-      securityHardened: true,
       timestamp: new Date().toISOString(),
     });
   });
@@ -41,7 +50,13 @@ async function startServer() {
   // Apply general API rate limiting
   app.use('/api', apiRateLimiter);
 
-  // Mount API router
+  // Mount the isolated admin router BEFORE the general API router because
+  // apiRouter ends with a catch-all 404 handler.
+  // Admin endpoints require Firebase ID-token verification plus PostgreSQL roles.
+  app.use('/api/admin', createAdminRouter(postgresPool));
+  // PostgreSQL owns the migrated catalogue and stock-reservation endpoints.
+  // These routes are mounted before the legacy router so there is no Map fallback.
+  app.use('/api', createCommerceRouter(postgresPool));
   app.use('/api', apiRouter);
 
   // OAuth popup callback endpoint (postMessage cross-origin handshake)
@@ -69,7 +84,7 @@ async function startServer() {
           <script>
             try {
               if (window.opener) {
-                window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS', provider: 'social' }, '*');
+                window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS', provider: 'social' }, window.location.origin);
                 setTimeout(function() { window.close(); }, 500);
               } else {
                 window.location.href = '/';
@@ -90,6 +105,7 @@ async function startServer() {
     });
   } else {
     // Vite middleware for development
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true, host: '0.0.0.0' },
       appType: 'spa',

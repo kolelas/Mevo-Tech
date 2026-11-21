@@ -16,14 +16,18 @@ export class PayFastProvider implements IPaymentProvider {
     passphrase?: string;
     isSandbox?: boolean;
   }) {
-    this.merchantId = config?.merchantId || process.env.PAYFAST_MERCHANT_ID || '10000100';
-    this.merchantKey = config?.merchantKey || process.env.PAYFAST_MERCHANT_KEY || '46f0cd694581a';
-    this.passphrase = config?.passphrase || process.env.PAYFAST_PASSPHRASE || 'testpassphrase';
+    this.merchantId = config?.merchantId ?? process.env.PAYFAST_MERCHANT_ID ?? '';
+    this.merchantKey = config?.merchantKey ?? process.env.PAYFAST_MERCHANT_KEY ?? '';
+    this.passphrase = config?.passphrase ?? process.env.PAYFAST_PASSPHRASE ?? '';
     this.isSandbox = config?.isSandbox ?? (process.env.PAYFAST_SANDBOX !== 'false');
   }
 
   isConfigured(): boolean {
-    return Boolean(this.merchantId && this.merchantKey);
+    return Boolean(
+      this.merchantId &&
+      this.merchantKey &&
+      !/sample|placeholder|change.?me|testpassphrase/i.test(`${this.merchantId} ${this.merchantKey} ${this.passphrase}`)
+    );
   }
 
   /**
@@ -101,9 +105,15 @@ export class PayFastProvider implements IPaymentProvider {
   ): Promise<PaymentWebhookVerificationResult> {
     const data = typeof body === 'string' ? Object.fromEntries(new URLSearchParams(body)) : (body as Record<string, string>);
 
+    const signatureReceived = typeof data.signature === 'string' ? data.signature : '';
     const expectedSignature = this.generateSignature(data, this.passphrase);
-    const signatureReceived = data.signature;
-    const isSignatureValid = signatureReceived?.toLowerCase() === expectedSignature.toLowerCase();
+    const signatureFormatValid = /^[a-f0-9]{32}$/i.test(signatureReceived);
+    const expectedBuffer = Buffer.from(expectedSignature, 'hex');
+    const receivedBuffer = signatureFormatValid ? Buffer.from(signatureReceived, 'hex') : Buffer.alloc(0);
+    const isSignatureValid = this.isConfigured() &&
+      signatureFormatValid &&
+      expectedBuffer.length === receivedBuffer.length &&
+      crypto.timingSafeEqual(expectedBuffer, receivedBuffer);
 
     const orderReference = data.m_payment_id || '';
     const pfPaymentId = data.pf_payment_id || `PF_${Date.now()}`;

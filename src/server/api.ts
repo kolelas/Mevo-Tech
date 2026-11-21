@@ -35,19 +35,8 @@ function getRequesterContext(req: Request): {
     }
   }
 
-  if (!authenticatedCustomerId) {
-    const headerCustId = req.headers['x-customer-id'] as string | undefined;
-    if (headerCustId && headerCustId.trim() !== '') {
-      authenticatedCustomerId = headerCustId.trim();
-    }
-  }
-
-  if (!authenticatedEmail) {
-    const headerEmail = req.headers['x-customer-email'] as string | undefined;
-    if (headerEmail && headerEmail.trim() !== '') {
-      authenticatedEmail = headerEmail.trim().toLowerCase();
-    }
-  }
+  // Never trust caller-controlled identity headers. Customer identity must come
+  // from a server-verified bearer token; headers are not proof of ownership.
 
   const rawSession =
     (req.headers['x-cart-session-id'] as string | undefined) ||
@@ -128,6 +117,10 @@ apiRouter.post('/cart/validate', (req: Request, res: Response) => {
     let hasStockIssue = false;
 
     for (const item of items) {
+      if (!item || typeof item.productId !== 'string' || !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 99) {
+        hasStockIssue = true;
+        continue;
+      }
       const product = db.getProductById(item.productId);
       if (!product || !product.isActive) {
         hasStockIssue = true;
@@ -140,14 +133,16 @@ apiRouter.post('/cart/validate', (req: Request, res: Response) => {
 
       if (item.variantId) {
         const variant = product.variants.find((v) => v.id === item.variantId);
-        if (variant) {
-          priceCents = variant.promotionalPriceCents || variant.priceCents;
-          availableStock = variant.onHandQuantity - variant.reservedQuantity;
-          variantTitle = variant.title;
+        if (!variant) {
+          hasStockIssue = true;
+          continue;
         }
+        priceCents = variant.promotionalPriceCents || variant.priceCents;
+        availableStock = variant.onHandQuantity - variant.reservedQuantity;
+        variantTitle = variant.title;
       }
 
-      const quantity = Math.min(item.quantity, Math.max(1, availableStock));
+      const quantity = Math.min(item.quantity, Math.max(0, availableStock));
       if (item.quantity > availableStock) {
         hasStockIssue = true;
       }
@@ -399,6 +394,10 @@ apiRouter.post('/checkout/reserve', checkoutRateLimiter, (req: Request, res: Res
 apiRouter.post('/checkout/create-order', checkoutRateLimiter, (req: Request, res: Response) => {
   try {
     const { items, shippingAddress, shippingMethodId, paymentMethod, discountCode, sessionId, customerId } = req.body;
+    const requester = getRequesterContext(req);
+    if (!requester.authenticatedCustomerId || requester.authenticatedCustomerId !== customerId) {
+      return res.status(401).json({ success: false, error: 'A valid customer session for this account is required.' });
+    }
 
     if (!Array.isArray(items) || items.length === 0 || !shippingAddress || !paymentMethod) {
       return res.status(400).json({ success: false, error: 'Missing required order fields' });
@@ -470,15 +469,19 @@ apiRouter.post('/checkout/create-order', checkoutRateLimiter, (req: Request, res
         return res.status(400).json({ success: false, error: `Product unavailable: ${item.productId}` });
       }
 
+      if (!Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 99) {
+        return res.status(400).json({ success: false, error: 'Item quantities must be whole numbers between 1 and 99.' });
+      }
       let unitPriceCents = product.promotionalPriceCents || product.priceCents;
       let variantTitle: string | undefined;
 
       if (item.variantId) {
         const variant = product.variants.find((v) => v.id === item.variantId);
-        if (variant) {
-          unitPriceCents = variant.promotionalPriceCents || variant.priceCents;
-          variantTitle = variant.title;
+        if (!variant) {
+          return res.status(400).json({ success: false, error: `Invalid product variant: ${item.variantId}` });
         }
+        unitPriceCents = variant.promotionalPriceCents || variant.priceCents;
+        variantTitle = variant.title;
       }
 
       const totalItemCents = unitPriceCents * item.quantity;
@@ -577,6 +580,9 @@ apiRouter.post('/payments/initiate', async (req: Request, res: Response) => {
     if (!order) {
       return res.status(404).json({ success: false, error: 'Order not found' });
     }
+    if (!verifyCustomerOwnership(req, order.customerId, order.customerEmail)) {
+      return res.status(403).json({ success: false, error: 'Access denied. Authenticate as the order owner.' });
+    }
 
     if (order.status !== 'PENDING_PAYMENT' && order.status !== 'PAYMENT_FAILED') {
       return res.status(400).json({
@@ -586,6 +592,12 @@ apiRouter.post('/payments/initiate', async (req: Request, res: Response) => {
     }
 
     const provider = getPaymentProvider(providerId as PaymentProvider);
+    if (!provider.isConfigured()) {
+      return res.status(503).json({
+        success: false,
+        error: 'This payment provider is not configured. Please choose another payment method.',
+      });
+    }
     const appUrl = process.env.APP_URL || 'http://localhost:3000';
 
     const paymentAttempt: PaymentAttempt = {
@@ -621,9 +633,14 @@ apiRouter.post('/payments/:provider/webhook', async (req: Request, res: Response
     const providerId = req.params.provider as PaymentProvider;
     const provider = getPaymentProvider(providerId);
 
+    // Paystack signatures must be calculated over the original JSON bytes, not a re-serialized object.
+    const rawBody = (req as Request & { rawBody?: string }).rawBody;
+    const webhookBody = providerId === 'paystack'
+      ? (rawBody || '')
+      : req.body;
     const verification = await provider.verifyWebhook(
       req.headers as Record<string, string>,
-      req.body
+      webhookBody
     );
 
     if (!verification.isValid || !verification.signatureVerified) {
@@ -648,31 +665,39 @@ apiRouter.post('/payments/:provider/webhook', async (req: Request, res: Response
       return res.status(404).json({ success: false, error: 'Order not found' });
     }
 
+    // Once paid, do not allow later failure/cancel notifications to downgrade state.
+    // Durable idempotency still requires database-backed transactions/event IDs.
+    if (order.status === 'PAID') {
+      db.recordAuditLog({ actor: providerId.toUpperCase() + ' Webhook', role: 'system', action: 'PAYMENT_WEBHOOK_POST_PAYMENT_IGNORED', targetType: 'PAYMENT', targetId: order.reference, category: 'payment_failure', severity: 'info', details: 'Post-payment webhook ignored to prevent paid order state downgrade: ' + order.reference + '.' });
+      return res.json({ success: true, message: 'Notification ignored for already-paid order.' });
+    }
+
     // Verify amount match in integer cents
     const amountCheck = verifyPaymentAmount({
       expectedCents: order.totalCents,
       receivedCents: verification.amountCents,
     });
+    const currencyMatches = verification.currency.toUpperCase() === order.currency.toUpperCase();
 
     if (verification.status === 'SUCCESSFUL') {
-      if (!amountCheck.isValid) {
+      if (!amountCheck.isValid || !currencyMatches) {
         db.recordAuditLog({
           actor: `${providerId.toUpperCase()} Webhook`,
           role: 'system',
-          action: 'PAYMENT_AMOUNT_MISMATCH',
+          action: 'PAYMENT_AMOUNT_CURRENCY_MISMATCH',
           targetType: 'PAYMENT',
           targetId: order.reference,
           category: 'payment_failure',
           severity: 'critical',
-          details: `Amount mismatch detected for ${order.reference}! Expected R ${(order.totalCents / 100).toFixed(2)}, received R ${(verification.amountCents / 100).toFixed(2)}`,
+          details: `Payment amount/currency mismatch for ${order.reference}. Expected ${order.currency} ${(order.totalCents / 100).toFixed(2)}, received ${verification.currency || 'missing'} ${(verification.amountCents / 100).toFixed(2)}.`,
         });
         db.updateOrderStatus(
           order.reference,
           'FULFILMENT_ON_HOLD',
-          `Payment amount mismatch! Expected R ${(order.totalCents / 100).toFixed(2)}, received R ${(verification.amountCents / 100).toFixed(2)}. Transaction ${verification.providerTransactionId}`,
+          `Payment amount/currency mismatch! Expected ${order.currency} ${(order.totalCents / 100).toFixed(2)}, received ${verification.currency || 'missing'} ${(verification.amountCents / 100).toFixed(2)}. Transaction ${verification.providerTransactionId}`,
           `${providerId.toUpperCase()} Webhook`
         );
-        return res.status(400).json({ success: false, error: 'Payment amount mismatch' });
+        return res.status(400).json({ success: false, error: 'Payment amount or currency mismatch' });
       }
 
       // Transition order to PAID and convert inventory reservations to permanent sales
@@ -714,53 +739,75 @@ apiRouter.post('/payments/:provider/webhook', async (req: Request, res: Response
   }
 });
 
-// Developer sandbox simulated webhook for instant verification in dev
-apiRouter.post('/payments/simulate-webhook', async (req: Request, res: Response) => {
+// Explicitly opt-in developer sandbox. It is disabled unless the environment
+// operator enables it, and callers must own the order they are simulating.
+apiRouter.post('/payments/simulate-webhook', checkoutRateLimiter, (req: Request, res: Response) => {
+  if (
+    process.env.NODE_ENV === 'production' ||
+    process.env.MEVO_ENABLE_PAYMENT_SIMULATOR !== 'true'
+  ) {
+    return res.status(404).json({ success: false, error: 'Not found' });
+  }
+
   try {
-    const { orderReference, outcome, provider } = req.body;
-    const order = db.getOrderByReference(orderReference);
+    const requester = getRequesterContext(req);
+    const { orderReference, outcome } = req.body || {};
+    if (typeof orderReference !== 'string' || !['SUCCESS', 'FAIL', 'CANCEL'].includes(outcome)) {
+      return res.status(400).json({ success: false, error: 'Invalid simulation request.' });
+    }
+
+    const order = db.getOrderByReference(orderReference.trim().toUpperCase());
     if (!order) {
       return res.status(404).json({ success: false, error: 'Order not found' });
     }
+    if (
+      !requester.authenticatedCustomerId ||
+      requester.authenticatedCustomerId !== order.customerId
+    ) {
+      db.recordAuditLog({
+        actor: requester.authenticatedEmail || 'unauthenticated',
+        role: 'guest',
+        action: 'PAYMENT_SIMULATION_ACCESS_DENIED',
+        targetType: 'PAYMENT',
+        targetId: order.reference,
+        category: 'payment_failure',
+        severity: 'warning',
+        details: 'Payment simulation denied because the requester did not prove order ownership.',
+      });
+      return res.status(403).json({ success: false, error: 'Authenticate as the order owner to simulate payment.' });
+    }
 
-    const providerName = provider || order.paymentMethod;
+    if (order.status === 'PAID') {
+      return res.status(409).json({ success: false, error: 'Paid orders cannot be changed by the simulator.' });
+    }
 
+    const actor = `Sandbox Payment Simulator (${requester.authenticatedCustomerId})`;
     if (outcome === 'SUCCESS') {
       db.updateOrderStatus(
         order.reference,
         'PAID',
-        `Sandbox payment completed successfully via ${providerName.toUpperCase()}. Stock decremented permanently.`,
-        'Sandbox Payment Simulator'
+        'Sandbox payment completed. This is a test-only payment state, not a provider confirmation.',
+        actor
       );
     } else if (outcome === 'FAIL') {
       db.recordAuditLog({
-        actor: 'Payment Sandbox Simulator',
-        role: 'system',
+        actor,
+        role: 'customer',
         action: 'PAYMENT_ATTEMPT_FAILED',
         targetType: 'PAYMENT',
         targetId: order.reference,
         category: 'payment_failure',
         severity: 'warning',
-        details: `Simulated payment failure (card decline / 3D Secure timeout) for order ${order.reference} via ${providerName.toUpperCase()}`,
+        details: 'Test-only simulated payment failure.',
       });
-      db.updateOrderStatus(
-        order.reference,
-        'PAYMENT_FAILED',
-        `Sandbox simulated payment failure via ${providerName.toUpperCase()}.`,
-        'Sandbox Payment Simulator'
-      );
-    } else if (outcome === 'CANCEL') {
-      db.updateOrderStatus(
-        order.reference,
-        'PAYMENT_CANCELLED',
-        `Sandbox user payment cancelled.`,
-        'Sandbox Payment Simulator'
-      );
+      db.updateOrderStatus(order.reference, 'PAYMENT_FAILED', 'Sandbox simulated payment failure.', actor);
+    } else {
+      db.updateOrderStatus(order.reference, 'PAYMENT_CANCELLED', 'Sandbox payment cancelled.', actor);
     }
 
-    res.json({ success: true, order: db.getOrderByReference(orderReference) });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
+    res.json({ success: true, order: db.getOrderByReference(order.reference) });
+  } catch {
+    res.status(500).json({ success: false, error: 'Unable to process payment simulation.' });
   }
 });
 
@@ -771,6 +818,9 @@ apiRouter.get('/orders/:reference', (req: Request, res: Response) => {
     const order = db.getOrderByReference(req.params.reference);
     if (!order) {
       return res.status(404).json({ success: false, error: 'Order not found' });
+    }
+    if (!verifyCustomerOwnership(req, order.customerId, order.customerEmail)) {
+      return res.status(403).json({ success: false, error: 'Access denied. Authenticate as the order owner.' });
     }
     res.json({ success: true, order });
   } catch (error: any) {
@@ -790,7 +840,25 @@ apiRouter.post('/orders/lookup', emailFormRateLimiter, (req: Request, res: Respo
       return res.status(404).json({ success: false, error: 'No matching order found for this email and reference.' });
     }
 
-    res.json({ success: true, order });
+    // Public tracking must not expose full order, address, customer, or payment data.
+    res.json({
+      success: true,
+      order: {
+        reference: order.reference,
+        status: order.status,
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt,
+        items: order.items.map((item) => ({
+          name: item.name,
+          variantTitle: item.variantTitle,
+          quantity: item.quantity,
+        })),
+        statusHistory: order.statusHistory.map((entry) => ({
+          status: entry.status,
+          timestamp: entry.timestamp,
+        })),
+      },
+    });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -927,33 +995,13 @@ apiRouter.post('/customer/login', authRateLimiter, (req: Request, res: Response)
 });
 
 // Social Login / Registration (Google & Facebook SSO)
-apiRouter.post('/customer/social-login', authRateLimiter, (req: Request, res: Response) => {
-  try {
-    const { provider, email, name, avatar, phone } = req.body;
-    if (!provider || !email) {
-      return res.status(400).json({ success: false, error: 'Provider and email are required for social login' });
-    }
-
-    if (provider !== 'google' && provider !== 'facebook') {
-      return res.status(400).json({ success: false, error: 'Provider must be google or facebook' });
-    }
-
-    const result = db.socialLoginCustomer({
-      provider,
-      email,
-      name: name || (provider === 'google' ? 'Google Customer' : 'Facebook Customer'),
-      avatar,
-      phone,
-    });
-
-    if (!result.success) {
-      return res.status(403).json(result);
-    }
-
-    res.json(result);
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
-  }
+apiRouter.post('/customer/social-login', authRateLimiter, (_req: Request, res: Response) => {
+  // Identity claims supplied by the client are not proof of authentication.
+  // Until provider-issued tokens are verified server-side, this endpoint fails closed.
+  res.status(501).json({
+    success: false,
+    error: 'Social login is temporarily unavailable until provider token verification is implemented.',
+  });
 });
 
 apiRouter.get('/customer/me', (req: Request, res: Response) => {
@@ -969,16 +1017,8 @@ apiRouter.get('/customer/me', (req: Request, res: Response) => {
       }
     }
 
-    // 2. Fallback to session headers or query parameters
-    if (!customer) {
-      const customerId = (req.headers['x-customer-id'] as string) || (req.query.customerId as string);
-      const email = (req.headers['x-customer-email'] as string) || (req.query.email as string);
-      if (customerId) {
-        customer = db.getCustomerById(customerId);
-      } else if (email) {
-        customer = db.getCustomerByEmail(email);
-      }
-    }
+    // No caller-controlled headers or query parameters may establish account identity.
+    // Customer profile access requires a cryptographically verified bearer token.
 
     if (!customer) {
       return res.status(404).json({ success: false, error: 'Customer account not found' });
@@ -993,9 +1033,10 @@ apiRouter.get('/customer/me', (req: Request, res: Response) => {
 // POPIA Section 14 Customer Data Portability Export
 apiRouter.get('/customer/export-data', (req: Request, res: Response) => {
   try {
-    const customerId = (req.query.customerId as string) || (req.headers['x-customer-id'] as string);
+    const requester = getRequesterContext(req);
+    const customerId = requester.authenticatedCustomerId;
     if (!customerId) {
-      return res.status(400).json({ success: false, error: 'customerId required for POPIA export' });
+      return res.status(401).json({ success: false, error: 'A valid customer session is required.' });
     }
 
     // Principle 5: Check who owns it before export / update / delete
@@ -1020,19 +1061,24 @@ apiRouter.get('/customer/export-data', (req: Request, res: Response) => {
 // POPIA Section 14 Right to be Forgotten (Account Deletion & Data Purge)
 apiRouter.post('/customer/delete-account', (req: Request, res: Response) => {
   try {
-    const { customerId, confirmation } = req.body;
-    if (!customerId || confirmation !== 'PERMANENTLY_DELETE') {
+    const requester = getRequesterContext(req);
+    const customerId = requester.authenticatedCustomerId;
+    const { confirmation } = req.body || {};
+    if (!customerId) {
+      return res.status(401).json({ success: false, error: 'A valid customer session is required.' });
+    }
+    if (confirmation !== 'PERMANENTLY_DELETE') {
       return res.status(400).json({
         success: false,
-        error: 'Confirmation string "PERMANENTLY_DELETE" and customerId required to purge account',
+        error: 'Confirmation string "PERMANENTLY_DELETE" required to purge account',
       });
     }
 
-    // Principle 5: Check who owns it before update or delete
+    // Target account is derived exclusively from the verified session.
     if (!verifyCustomerOwnership(req, customerId)) {
       return res.status(403).json({
         success: false,
-        error: 'Access denied: You can only delete your own customer account (Ownership check enforced).',
+        error: 'Access denied: You can only delete your own customer account.',
       });
     }
 
@@ -1097,14 +1143,16 @@ apiRouter.post('/customer/favourites/toggle', (req: Request, res: Response) => {
 
 apiRouter.get('/customer/orders', (req: Request, res: Response) => {
   try {
-    const email = (req.query.email as string) || (req.headers['x-customer-email'] as string);
-    const customerId = (req.query.customerId as string) || (req.headers['x-customer-id'] as string);
+    const ctx = getRequesterContext(req);
+    const customerId = ctx.authenticatedCustomerId;
+    const email = ctx.authenticatedEmail;
+    const ownerIdentity = customerId || email;
 
-    if (!email && !customerId) {
-      return res.status(400).json({ success: false, error: 'Email or customerId required to query orders' });
+    if (!ownerIdentity) {
+      return res.status(401).json({ success: false, error: 'A valid customer session is required.' });
     }
 
-    // Principle 5: Check who owns it before read or update
+    // Identity is derived from the signed token, not query/header values.
     if (!verifyCustomerOwnership(req, customerId, email)) {
       return res.status(403).json({
         success: false,
@@ -1112,7 +1160,7 @@ apiRouter.get('/customer/orders', (req: Request, res: Response) => {
       });
     }
 
-    const orders = db.getCustomerOrders(customerId || email);
+    const orders = db.getCustomerOrders(ownerIdentity);
     res.json({ success: true, count: orders.length, orders });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -1127,12 +1175,23 @@ apiRouter.get('/products/:id/reviews', (req: Request, res: Response) => {
     const totalRating = reviews.reduce((sum, r) => sum + r.rating, 0);
     const averageRating = reviews.length > 0 ? Number((totalRating / reviews.length).toFixed(1)) : 5.0;
 
+    // Public review responses must not expose internal customer IDs, emails,
+    // moderation metadata, or other private fields from the stored review record.
+    const publicReviews = reviews.map((review: any) => ({
+      id: review.id,
+      productId: review.productId,
+      rating: review.rating,
+      title: review.title,
+      comment: review.comment,
+      authorName: review.authorName,
+      createdAt: review.createdAt,
+    }));
     res.json({
       success: true,
       productId: req.params.id,
-      count: reviews.length,
+      count: publicReviews.length,
       averageRating,
-      reviews,
+      reviews: publicReviews,
     });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -1141,21 +1200,31 @@ apiRouter.get('/products/:id/reviews', (req: Request, res: Response) => {
 
 apiRouter.post('/products/:id/reviews', (req: Request, res: Response) => {
   try {
-    const { authorName, rating, title, comment, userId, customerEmail } = req.body;
-    if (!authorName || !rating || !title || !comment) {
-      return res.status(400).json({ success: false, error: 'Author name, rating (1-5), title, and comment are required' });
+    const ctx = getRequesterContext(req);
+    if (!ctx.authenticatedCustomerId || !ctx.authenticatedEmail) {
+      return res.status(401).json({ success: false, error: 'Sign in to submit a product review.' });
     }
-
+    const { rating, title, comment } = req.body;
+    if (!Number.isInteger(Number(rating)) || Number(rating) < 1 || Number(rating) > 5 || typeof title !== 'string' || typeof comment !== 'string' || !title.trim() || !comment.trim()) {
+      return res.status(400).json({ success: false, error: 'A rating from 1–5, title, and comment are required.' });
+    }
+    const ownedOrders = db.getCustomerOrders(ctx.authenticatedCustomerId);
+    const purchased = ownedOrders.some((order) =>
+      ['PAID', 'PROCESSING', 'SHIPPED', 'DELIVERED'].includes(order.status) &&
+      order.items.some((item) => item.productId === req.params.id)
+    );
+    if (!purchased) {
+      return res.status(403).json({ success: false, error: 'A verified order containing this product is required to review it.' });
+    }
     const result = db.addReview({
       productId: req.params.id,
-      userId,
-      authorName,
+      userId: ctx.authenticatedCustomerId,
+      authorName: ctx.authenticatedEmail,
       rating: Number(rating),
-      title,
-      comment,
-      customerEmail,
+      title: title.trim().slice(0, 120),
+      comment: comment.trim().slice(0, 2000),
+      customerEmail: ctx.authenticatedEmail,
     });
-
     res.json(result);
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -1166,21 +1235,18 @@ apiRouter.post('/products/:id/reviews', (req: Request, res: Response) => {
 
 apiRouter.post('/products/:productId/price-alerts', emailFormRateLimiter, (req: Request, res: Response) => {
   try {
-    const { productId } = req.params;
-    const { email, targetType = 'any', customTargetPriceCents, customerId } = req.body;
-
-    if (!email) {
-      return res.status(400).json({ success: false, error: 'Valid email address is required.' });
+    const ctx = getRequesterContext(req);
+    if (!ctx.authenticatedCustomerId || !ctx.authenticatedEmail) {
+      return res.status(401).json({ success: false, error: 'Sign in to create a price alert.' });
     }
-
+    const { targetType = 'any', customTargetPriceCents } = req.body || {};
     const result = db.createPriceAlert({
-      productId,
-      email,
+      productId: req.params.productId,
+      email: ctx.authenticatedEmail,
       targetType,
       customTargetPriceCents: customTargetPriceCents ? Number(customTargetPriceCents) : undefined,
-      customerId,
+      customerId: ctx.authenticatedCustomerId,
     });
-
     res.json(result);
   } catch (error: any) {
     res.status(400).json({ success: false, error: error.message });
@@ -1189,13 +1255,11 @@ apiRouter.post('/products/:productId/price-alerts', emailFormRateLimiter, (req: 
 
 apiRouter.get('/price-alerts', (req: Request, res: Response) => {
   try {
-    const email = req.query.email as string | undefined;
-    if (email) {
-      const alerts = db.getPriceAlertsByEmail(email);
-      return res.json({ success: true, count: alerts.length, alerts });
+    const ctx = getRequesterContext(req);
+    if (!ctx.authenticatedCustomerId && !ctx.authenticatedEmail) {
+      return res.status(401).json({ success: false, error: 'A valid customer session is required.' });
     }
-
-    const alerts = db.getAllPriceAlerts();
+    const alerts = db.getPriceAlertsByEmail(ctx.authenticatedEmail || '');
     res.json({ success: true, count: alerts.length, alerts });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -1205,24 +1269,18 @@ apiRouter.get('/price-alerts', (req: Request, res: Response) => {
 // Principle 5: Check who owns it before update or delete
 apiRouter.delete('/price-alerts/:id', (req: Request, res: Response) => {
   try {
-    const email = req.query.email as string | undefined;
+    const ctx = getRequesterContext(req);
+    if (!ctx.authenticatedCustomerId || !ctx.authenticatedEmail) {
+      return res.status(401).json({ success: false, error: 'A valid customer session is required.' });
+    }
     const alert = db.getAllPriceAlerts().find((a) => a.id === req.params.id);
-
     if (!alert) {
       return res.status(404).json({ success: false, error: 'Price alert not found' });
     }
-
-    // Verify ownership: requesting email matches alert email or admin authorized
     if (!verifyCustomerOwnership(req, alert.customerId, alert.email)) {
-      if (!email || email.trim().toLowerCase() !== alert.email.toLowerCase()) {
-        return res.status(403).json({
-          success: false,
-          error: 'Access denied: You can only delete price alerts created by your email (Ownership check enforced).',
-        });
-      }
+      return res.status(403).json({ success: false, error: 'Access denied: You can only delete your own price alerts.' });
     }
-
-    const success = db.cancelPriceAlert(req.params.id, email || alert.email);
+    const success = db.cancelPriceAlert(req.params.id, ctx.authenticatedEmail);
     if (!success) {
       return res.status(404).json({ success: false, error: 'Alert not found or unauthorized' });
     }
@@ -1283,6 +1341,9 @@ apiRouter.post('/contact/send', emailFormRateLimiter, (req: Request, res: Respon
 
 
 apiRouter.post('/products/:productId/simulate-price-drop', (req: Request, res: Response) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ success: false, error: 'Not found' });
+  }
   try {
     const { productId } = req.params;
     const { newPriceCents } = req.body;

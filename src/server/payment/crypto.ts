@@ -18,12 +18,12 @@ export class CryptoPaymentProvider implements IPaymentProvider {
     apiKey?: string;
     webhookSecret?: string;
   }) {
-    this.apiKey = config?.apiKey || process.env.CRYPTO_API_KEY || 'test_crypto_key';
-    this.webhookSecret = config?.webhookSecret || process.env.CRYPTO_WEBHOOK_SECRET || 'test_webhook_secret';
+    this.apiKey = config?.apiKey ?? process.env.CRYPTO_API_KEY ?? '';
+    this.webhookSecret = config?.webhookSecret ?? process.env.CRYPTO_WEBHOOK_SECRET ?? '';
   }
 
   isConfigured(): boolean {
-    return Boolean(this.apiKey);
+    return Boolean(this.apiKey && this.webhookSecret && !/sample|placeholder|test_|sandbox/i.test(`${this.apiKey} ${this.webhookSecret}`));
   }
 
   async initiatePayment(params: PaymentInitiateParams): Promise<PaymentInitiateResult> {
@@ -68,14 +68,14 @@ export class CryptoPaymentProvider implements IPaymentProvider {
     const amountCents = Number(data.amountCents || 0);
 
     return {
-      isValid: true,
+      isValid: false,
       provider: 'crypto',
       orderReference,
       providerTransactionId,
       status: statusText === 'CONFIRMED' || statusText === 'SUCCESSFUL' ? 'SUCCESSFUL' : 'PENDING',
       amountCents,
       currency: 'ZAR',
-      signatureVerified: true,
+      signatureVerified: false,
       rawPayload: data,
     };
   }

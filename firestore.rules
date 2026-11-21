@@ -24,11 +24,14 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
     function isAdmin() {
-      return isSignedIn() && (
-        request.auth.token.email == 'blacquebeat@gmail.com' ||
-        request.auth.token.email == 'admin@mevotech.co.za' ||
-        request.auth.token.email == 'owner@mevotech.co.za'
-      );
+      return isSignedIn() &&
+        request.auth.token.email_verified == true &&
+        (
+          request.auth.token.role in ['owner', 'admin'] ||
+          request.auth.token.email == 'blacquebeat@gmail.com' ||
+          request.auth.token.email == 'admin@mevotech.co.za' ||
+          request.auth.token.email == 'owner@mevotech.co.za'
+        );
     }
 
     // Connection probe endpoint
@@ -62,12 +65,27 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
-    // Price drop alerts
+    // Price drop alerts: customers may create only alerts bound to their
+    // verified Firebase email. Admins can manage; owners may read/delete theirs.
     match /priceAlerts/{alertId} {
-      allow get: if isAdmin() || (isSignedIn() && resource.data.email == request.auth.token.email);
+      function alertOwner() {
+        return isSignedIn() &&
+          request.auth.token.email_verified == true &&
+          resource.data.email == request.auth.token.email;
+      }
+      allow get: if isAdmin() || alertOwner();
       allow list: if isAdmin();
-      allow create: if incoming().email is string && incoming().productId is string;
-      allow update, delete: if isAdmin();
+      allow create: if isSignedIn() &&
+        request.auth.token.email_verified == true &&
+        incoming().email is string &&
+        incoming().email == request.auth.token.email &&
+        incoming().productId is string &&
+        incoming().productId.size() > 0 &&
+        incoming().productId.size() <= 128 &&
+        incoming().keys().hasOnly(['email', 'productId', 'productName', 'productSlug', 'productImage', 'initialPriceCents', 'targetPriceCents', 'targetType', 'status', 'createdAt', 'customerId']) &&
+        incoming().status == 'ACTIVE';
+      allow update: if isAdmin();
+      allow delete: if isAdmin() || alertOwner();
     }
 
     // Store settings & configuration

@@ -15,13 +15,13 @@ export class PayflexProvider implements IPaymentProvider {
     clientSecret?: string;
     environment?: string;
   }) {
-    this.clientId = config?.clientId || process.env.PAYFLEX_CLIENT_ID || 'sandbox_client_id';
-    this.clientSecret = config?.clientSecret || process.env.PAYFLEX_CLIENT_SECRET || 'sandbox_secret';
+    this.clientId = config?.clientId ?? process.env.PAYFLEX_CLIENT_ID ?? '';
+    this.clientSecret = config?.clientSecret ?? process.env.PAYFLEX_CLIENT_SECRET ?? '';
     this.environment = config?.environment || process.env.PAYFLEX_ENVIRONMENT || 'sandbox';
   }
 
   isConfigured(): boolean {
-    return Boolean(this.clientId && this.clientSecret);
+    return Boolean(this.clientId && this.clientSecret && !/sample|placeholder|sandbox/i.test(`${this.clientId} ${this.clientSecret}`));
   }
 
   async initiatePayment(params: PaymentInitiateParams): Promise<PaymentInitiateResult> {
@@ -61,22 +61,19 @@ export class PayflexProvider implements IPaymentProvider {
     headers: Record<string, string>,
     body: Record<string, unknown> | string
   ): Promise<PaymentWebhookVerificationResult> {
-    const data = typeof body === 'string' ? JSON.parse(body) : body;
-    const orderReference = (data.orderReference || data.reference || '') as string;
-    const providerTransactionId = (data.transactionId || `PFX_${Date.now()}`) as string;
-    const statusStr = ((data.status || 'SUCCESSFUL') as string).toUpperCase();
-    const amountCents = Number(data.amountCents || 0);
-
+    // Fail closed: this adapter currently has no verified Payflex webhook
+    // authentication contract or provider-side transaction reconciliation.
+    // Never treat caller-supplied status/amount fields as proof of payment.
     return {
-      isValid: true,
+      isValid: false,
       provider: 'payflex',
-      orderReference,
-      providerTransactionId,
-      status: statusStr === 'SUCCESSFUL' ? 'SUCCESSFUL' : 'FAILED',
-      amountCents,
+      orderReference: '',
+      providerTransactionId: '',
+      status: 'PENDING',
+      amountCents: 0,
       currency: 'ZAR',
-      signatureVerified: true,
-      rawPayload: data,
+      signatureVerified: false,
+      rawPayload: {},
     };
   }
 
