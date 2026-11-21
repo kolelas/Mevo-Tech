@@ -120,21 +120,6 @@ export function MainStore() {
       const path = window.location.pathname.replace(/^\/+/, '');
 
       if (
-        path === 'admin' ||
-        path.startsWith('admin/') ||
-        hash === 'admin' ||
-        hash === 'dashboard' ||
-        path === 'dashboard'
-      ) {
-        try {
-          window.history.replaceState({}, '', '/');
-        } catch {
-          // ignore
-        }
-        setCurrentView('storefront');
-        return;
-      }
-      if (
         hash === 'storefront' ||
         path === 'storefront' ||
         hash === 'shop' ||
@@ -785,10 +770,27 @@ export function MainStore() {
   );
 }
 
+function isAdminLocation() {
+  const path = window.location.pathname.replace(/\\/+$/, '') || '/';
+  const hash = window.location.hash.replace(/^#/, '');
+  return path === '/admin' || path.startsWith('/admin/') || hash === 'admin';
+}
+
 export function App() {
-  if (window.location.pathname === '/admin' || window.location.pathname.startsWith('/admin/')) {
-    return <AdminControlCentre />;
-  }
+  const [isAdminRoute, setIsAdminRoute] = useState(isAdminLocation);
+
+  useEffect(() => {
+    const syncRoute = () => setIsAdminRoute(isAdminLocation());
+    window.addEventListener('hashchange', syncRoute);
+    window.addEventListener('popstate', syncRoute);
+    return () => {
+      window.removeEventListener('hashchange', syncRoute);
+      window.removeEventListener('popstate', syncRoute);
+    };
+  }, []);
+
+  if (isAdminRoute) return <AdminControlCentre />;
+
   return (
     <AuthProvider>
       <CartProvider>
