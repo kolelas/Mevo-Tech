@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import type { Product, ProductVariant, ProductSpecification } from '../types';
 import { withPostgresTransaction } from './postgres';
@@ -111,8 +112,21 @@ export class PostgresCommerceRepository {
     }
     try {
       return await withPostgresTransaction(this.pool,async(client)=>{
-        await client.query(`UPDATE mevo_stock_reservations SET status='EXPIRED'
-          WHERE status='ACTIVE' AND expires_at<=now()`);
+        // Expire reservations and release reserved quantities atomically.
+        const expired = await client.query(
+          "SELECT id, product_id, variant_id, quantity FROM mevo_stock_reservations WHERE status='ACTIVE' AND expires_at<=now() FOR UPDATE",
+        );
+        for (const reservation of expired.rows) {
+          const table = reservation.variant_id ? 'mevo_product_variants' : 'mevo_products';
+          await client.query(
+            'UPDATE '+table+' SET stock_reserved=GREATEST(0,stock_reserved-$1), updated_at=now() WHERE id=$2',
+            [reservation.quantity, reservation.variant_id || reservation.product_id],
+          );
+          await client.query(
+            "UPDATE mevo_stock_reservations SET status='EXPIRED' WHERE id=$1 AND status='ACTIVE'",
+            [reservation.id],
+          );
+        }
         const ids:string[]=[];
         for(const item of input.items) {
           const table=item.variantId?'mevo_product_variants':'mevo_products';
@@ -140,6 +154,4 @@ export class PostgresCommerceRepository {
   }
 }
 
-function cryptoRandomId():string {
-  return 'res_'+Array.from({length:24},()=>Math.floor(Math.random()*16).toString(16)).join('');
-}
+function cryptoRandomId():string { return 'res_'+randomUUID(); }
