@@ -20,7 +20,7 @@ Scope: backend, customer account workspace, and security. The storefront is expl
 1. Durable webhook idempotency: persist provider event/transaction IDs with uniqueness constraints and transactionally update order/payment/stock state. Current in-memory order state cannot provide cross-process or restart guarantees.
 2. Runtime persistence: the PostgreSQL schema foundation exists, but the runtime database implementation still uses in-memory Maps. Migration is not complete.
 3. Admin authorization: audit all admin endpoints and enforce server-side roles/permissions. Client UI role flags are not authorization.
-4. Authentication: migrate legacy plaintext password records safely; eliminate plaintext comparison once migration is complete. Review token expiry, revocation, and email-change flows.
+4. Authentication: opportunistic legacy plaintext-password upgrade on successful login exists in the in-memory authentication path; confirm coverage against persistent production records and eliminate legacy comparison once migration is complete. Review token expiry, revocation, and email-change flows.
 5. Checkout: transactional stock reservation/order creation, coupon usage, pricing, and shipping validations.
 6. Reviews: unique per-customer/product constraints, moderation, and verified-purchase criteria tied to successful payment/delivery. Current API check is a preliminary control.
 7. Payment provider validation: review each adapter's official signature, callback fields, amount/currency and transaction status; reconciliation and refund flows.
