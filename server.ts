@@ -5,6 +5,8 @@ import { createServer as createViteServer } from 'vite';
 import helmet from 'helmet';
 import { apiRouter } from './src/server/api';
 import { apiRateLimiter } from './src/server/security';
+import { createAdminRouter } from './src/server/adminRoutes';
+import { createPostgresPool, getPostgresConfig } from './src/server/postgres';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -12,6 +14,8 @@ const __dirname = path.dirname(__filename);
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
+  const postgresConfig = getPostgresConfig();
+  const postgresPool = postgresConfig ? createPostgresPool(postgresConfig) : null;
 
   // Trust proxy for accurate rate-limiting behind cloud load balancers
   app.set('trust proxy', 1);
@@ -48,6 +52,9 @@ async function startServer() {
 
   // Mount API router
   app.use('/api', apiRouter);
+  // Admin endpoints are isolated from customer JWTs and require Firebase ID-token
+  // verification plus the PostgreSQL admin_roles registry.
+  app.use('/api/admin', createAdminRouter(postgresPool));
 
   // OAuth popup callback endpoint (postMessage cross-origin handshake)
   app.get(['/auth/callback', '/auth/callback/'], (_req, res) => {
