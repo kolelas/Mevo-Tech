@@ -16,7 +16,7 @@ The admin API returns HTTP 503 when PostgreSQL is not configured. It returns 401
 ## Database preparation
 
 1. Provision a non-production PostgreSQL database and backup/restore process.
-2. Apply migrations 003, 004, and 005 in order after reviewing them.
+2. Apply migrations `src/server/data/migrations/001_commerce_foundation.sql`, `src/server/data/migrations/002_webhook_review_constraints.sql`, then `src/server/migrations/003_persistence_rbac_payment_ledger.sql`, `004_payment_webhook_leases.sql`, and `005_admin_owner_guard.sql` in that order after reviewing them.
 3. Verify the `admin_roles` table and the last-owner trigger exist.
 4. Create a normal Firebase account for the intended initial owner and complete Firebase email verification.
 5. Retrieve that account's Firebase UID from the trusted Firebase project console. Confirm the email and UID independently.
