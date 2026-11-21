@@ -1,6 +1,8 @@
 import { Router, type Request, type Response } from 'express';
 import type { Pool } from 'pg';
 import { PostgresCommerceRepository } from './commerceRepository';
+import { PostgresCheckoutService, CheckoutError } from './checkoutService';
+import { checkoutRateLimiter, verifyCustomerToken } from './security';
 
 function optionalNumber(value:unknown):number|undefined {
   if (value===undefined || value===null || value==='') return undefined;
@@ -11,6 +13,7 @@ function optionalNumber(value:unknown):number|undefined {
 export function createCommerceRouter(pool:Pool|null) {
   const router=Router();
   const repository=pool ? new PostgresCommerceRepository(pool) : null;
+  const checkout=pool ? new PostgresCheckoutService(pool) : null;
 
   const unavailable=(_req:Request,res:Response) => res.status(503).json({
     success:false,
@@ -73,6 +76,34 @@ export function createCommerceRouter(pool:Pool|null) {
     const reservation=await repository.reserveStock({items,sessionId});
     if(!reservation.success) return res.status(409).json({success:false,error:reservation.error});
     return res.json({success:true,reservationIds:reservation.reservationIds});
+  });
+
+  router.post('/checkout/create-order', checkoutRateLimiter, async (req,res) => {
+    if(!checkout) return unavailable(req,res);
+    const authHeader=req.headers.authorization;
+    const token=authHeader?.startsWith('Bearer ')?authHeader.slice(7).trim():'';
+    const identity=token?verifyCustomerToken(token):null;
+    const body=req.body||{};
+    if(!identity || typeof body.customerId!=='string' || identity.customerId!==body.customerId) {
+      return res.status(401).json({success:false,error:'A valid customer session for this account is required.'});
+    }
+    try {
+      const order=await checkout.createPendingOrder({
+        customerId:identity.customerId,
+        items:body.items,
+        shippingAddress:body.shippingAddress,
+        shippingMethodId:body.shippingMethodId,
+        paymentMethod:body.paymentMethod,
+        discountCode:body.discountCode,
+        sessionId:body.sessionId,
+      });
+      return res.status(201).json({success:true,order});
+    } catch(error) {
+      if(error instanceof CheckoutError) {
+        return res.status(error.statusCode).json({success:false,error:error.message});
+      }
+      return res.status(503).json({success:false,error:'Checkout could not be completed. No order or stock reservation was committed.'});
+    }
   });
 
   return router;
