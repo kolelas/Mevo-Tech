@@ -56,6 +56,8 @@ jobs:
           PGUSER: mevo_ci
           PGPASSWORD: mevo_ci_test_only
         run: |
+          psql -v ON_ERROR_STOP=1 -f src/server/data/migrations/001_commerce_foundation.sql
+          psql -v ON_ERROR_STOP=1 -f src/server/data/migrations/002_webhook_review_constraints.sql
           psql -v ON_ERROR_STOP=1 -f src/server/migrations/003_persistence_rbac_payment_ledger.sql
           psql -v ON_ERROR_STOP=1 -f src/server/migrations/004_payment_webhook_leases.sql
           psql -v ON_ERROR_STOP=1 -f src/server/migrations/005_admin_owner_guard.sql
