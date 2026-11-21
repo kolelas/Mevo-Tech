@@ -121,3 +121,12 @@ test('PayFast rejects built-in/sample configuration and validates signatures in 
   const forged = { ...signed, signature: '0'.repeat(32) };
   assert.equal((await provider.verifyWebhook({}, forged)).isValid, false);
 });
+
+test('Payment gateways with absent or placeholder credentials are not configured', () => {
+  assert.equal(new PayFastProvider().isConfigured(), false);
+  assert.equal(new OzowProvider().isConfigured(), false);
+  assert.equal(new PayflexProvider().isConfigured(), false);
+  assert.equal(new CryptoPaymentProvider().isConfigured(), false);
+  assert.equal(new PayFastProvider({ merchantId: 'placeholder', merchantKey: 'placeholder' }).isConfigured(), false);
+  assert.equal(new OzowProvider({ siteCode: 'MEV-001', privateKey: 'sandbox_private_key', apiKey: 'sandbox_api_key' }).isConfigured(), false);
+});
