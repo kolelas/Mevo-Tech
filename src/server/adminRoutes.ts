@@ -641,6 +641,7 @@ export function createAdminRouter(
       'orders.fulfil',
       'customers.read',
       'customers.support',
+      'audit.read',
     ].filter((permission) =>
       hasAdminPermission(role, permission as Parameters<typeof hasAdminPermission>[1]),
     );
