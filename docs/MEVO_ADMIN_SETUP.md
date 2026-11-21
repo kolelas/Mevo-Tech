@@ -58,3 +58,13 @@ After the additive commerce migrations are applied to a non-production PostgreSQ
 - `GET /inventory/movements` — requires `inventory.read`; returns a bounded recent movement ledger, optionally filtered by `productId`.
 
 These are read-only PostgreSQL endpoints. They deliberately do not read from or write to the legacy in-memory Maps runtime. Inventory mutation, catalogue mutation, order fulfilment and customer-support operations are not yet exposed through this router.
+
+
+## Controlled catalogue and inventory writes
+
+The administrator API now also exposes two transactional write operations:
+
+- `PATCH /api/admin/catalog/products/:productId` — requires `catalog.write`. Accepts only `name`, `sku`, `slug`, `active`, `priceCents`, and `promotionalPriceCents`. Prices are integer cents; promotional price cannot exceed the regular price. Duplicate SKU/slug conflicts return HTTP 409.
+- `POST /api/admin/inventory/adjustments` — requires `inventory.write`. Body: `productId`, non-zero signed integer `quantity`, optional `reference`, and optional `note`. A row lock protects stock arithmetic. The operation rejects adjustments that would reduce on-hand stock below reserved units.
+
+Each successful change updates the product and inserts its inventory movement (where applicable) and administrator audit event in one PostgreSQL transaction. Failures roll back rather than leaving partial ledger/audit records. These operations are PostgreSQL-only and do not alter the Maps-backed storefront runtime. They are not enabled against production until the database is deliberately provisioned and the API is deployed under an approved change plan.
