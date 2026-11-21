@@ -371,13 +371,13 @@ export function createAdminRouter(
       }
       try {
         const result = await pool!.query(
-          \`SELECT id, reference, customer_id, customer_email, status, currency,
+          `SELECT id, reference, customer_id, customer_email, status, currency,
                   subtotal_cents, discount_cents, shipping_cents, tax_cents,
                   total_cents, shipment_carrier, tracking_number, created_at, updated_at, fulfilled_at
              FROM mevo_orders
             WHERE ($1::text IS NULL OR status = $1)
             ORDER BY created_at DESC, reference DESC
-            LIMIT $2 OFFSET $3\`,
+            LIMIT $2 OFFSET $3`,
           [status || null, limit, offset],
         );
         const count = await pool!.query(
@@ -426,14 +426,14 @@ export function createAdminRouter(
           const currentStatus = String(locked.rows[0].status).toUpperCase();
           if (transitions[currentStatus] !== nextStatus) return { kind: 'conflict' as const, currentStatus };
           const result = await client.query(
-            \`UPDATE mevo_orders
+            `UPDATE mevo_orders
                 SET status = $1,
                     shipment_carrier = CASE WHEN $1 = 'SHIPPED' THEN $2 ELSE shipment_carrier END,
                     tracking_number = CASE WHEN $1 = 'SHIPPED' THEN $3 ELSE tracking_number END,
                     fulfilled_at = CASE WHEN $1 = 'DELIVERED' THEN now() ELSE fulfilled_at END,
                     updated_at = now()
               WHERE reference = $4
-              RETURNING reference, status, shipment_carrier, tracking_number, updated_at, fulfilled_at\`,
+              RETURNING reference, status, shipment_carrier, tracking_number, updated_at, fulfilled_at`,
             [nextStatus, carrier || null, trackingNumber || null, reference],
           );
           const eventNote = note || ('Status changed from ' + currentStatus + ' to ' + nextStatus);
@@ -476,13 +476,13 @@ export function createAdminRouter(
       }
       try {
         const result = await pool!.query(
-          \`SELECT id, customer_id, customer_email, order_reference, subject, message,
+          `SELECT id, customer_id, customer_email, order_reference, subject, message,
                   status, priority, assigned_to, resolution_note, created_at, updated_at, resolved_at
              FROM mevo_support_cases
             WHERE ($1::text IS NULL OR status = $1)
             ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
                      created_at ASC
-            LIMIT $2 OFFSET $3\`,
+            LIMIT $2 OFFSET $3`,
           [status || null, limit, offset],
         );
         const count = await pool!.query(
@@ -517,9 +517,9 @@ export function createAdminRouter(
         const id = randomUUID();
         const created = await runAdminTransaction(async (client) => {
           const result = await client.query(
-            \`INSERT INTO mevo_support_cases (id, customer_id, customer_email, order_reference, subject, message, priority, assigned_to)
+            `INSERT INTO mevo_support_cases (id, customer_id, customer_email, order_reference, subject, message, priority, assigned_to)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-             RETURNING id, customer_id, customer_email, order_reference, subject, message, status, priority, assigned_to, created_at\`,
+             RETURNING id, customer_id, customer_email, order_reference, subject, message, status, priority, assigned_to, created_at`,
             [id, customerId, email, orderReference, subject, message, priority, identity.userId],
           );
           await client.query(
@@ -626,11 +626,11 @@ export function createAdminRouter(
       }
       try {
         const result = await pool!.query(
-          \`SELECT id, actor, action, target_type, target_id, details, created_at
+          `SELECT id, actor, action, target_type, target_id, details, created_at
              FROM mevo_audit_events
             WHERE ($1::text IS NULL OR action = $1)
             ORDER BY created_at DESC, id DESC
-            LIMIT $2 OFFSET $3\`,
+            LIMIT $2 OFFSET $3`,
           [action || null, limit, offset],
         );
         const count = await pool!.query(
