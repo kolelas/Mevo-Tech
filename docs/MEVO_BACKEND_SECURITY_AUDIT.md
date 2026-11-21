@@ -23,6 +23,11 @@ Scope: backend, customer account workspace, and security. The storefront is expl
 9. Account profile UI: regression-check only the customer workspace; no storefront changes.
 10. Deployment controls: production secrets, backups, restore test, logging, CI, dependency and vulnerability scanning.
 
+## Additional migration foundation committed
+- Added `002_webhook_review_constraints.sql`: a unique provider/event ID table to support durable webhook idempotency and persistent review constraints (unique customer/product/order, rating bounds, moderation state).
+- These constraints are groundwork only. They are not wired to the active in-memory runtime and have not been applied to a database.
+- Expanded cutover checklist at `docs/MEVO_BACKEND_SECURITY_AUDIT.md` to include transactional persistence, auth code delivery/expiry, account deletion/POPIA review, checkout concurrency, monitoring and staging.
+
 ## Guardrails
 - Do not merge or deploy to production until test and staging verification is performed and explicitly approved.
 - Preserve the existing storefront untouched.
