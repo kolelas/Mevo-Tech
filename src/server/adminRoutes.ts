@@ -644,6 +644,103 @@ export function createAdminRouter(
     })();
   });
 
+
+  router.get('/customers', requirePermission('customers.read'), (req, res) => {
+    void (async () => {
+      const limit = req.query.limit === undefined ? 25 : Number(req.query.limit);
+      const offset = req.query.offset === undefined ? 0 : Number(req.query.offset);
+      const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+      const status = typeof req.query.status === 'string' ? req.query.status.trim() : '';
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100 ||
+          !Number.isInteger(offset) || offset < 0 || offset > 1_000_000 ||
+          (req.query.search !== undefined && (typeof req.query.search !== 'string' || search.length > 100)) ||
+          (req.query.status !== undefined && !['active', 'restricted', 'blocked'].includes(status))) {
+        res.status(400).json({ success: false, error: 'Invalid customer filters or pagination.' });
+        return;
+      }
+      try {
+        const pattern = search ? '%' + search + '%' : null;
+        const result = await pool!.query(
+          \`SELECT id, email, display_name, status, created_at, updated_at
+             FROM mevo_customers
+            WHERE ($1::text IS NULL OR email ILIKE $1 OR display_name ILIKE $1)
+              AND ($2::text IS NULL OR status = $2)
+            ORDER BY created_at DESC, id ASC
+            LIMIT $3 OFFSET $4\`,
+          [pattern, status || null, limit, offset],
+        );
+        const count = await pool!.query(
+          \`SELECT COUNT(*)::bigint AS total FROM mevo_customers
+            WHERE ($1::text IS NULL OR email ILIKE $1 OR display_name ILIKE $1)
+              AND ($2::text IS NULL OR status = $2)\`,
+          [pattern, status || null],
+        );
+        res.json({ success: true, source: 'postgresql', pagination: { limit, offset, total: Number(count.rows[0]?.total ?? 0) }, customers: result.rows });
+      } catch {
+        res.status(503).json({ success: false, error: 'The PostgreSQL customer directory is temporarily unavailable.' });
+      }
+    })();
+  });
+
+  router.get('/customers/:customerId', requirePermission('customers.read'), (req, res) => {
+    void (async () => {
+      const customerId = req.params.customerId;
+      if (!customerId || customerId.length > 128) {
+        res.status(400).json({ success: false, error: 'Invalid customer ID.' });
+        return;
+      }
+      try {
+        const result = await pool!.query(
+          'SELECT id, email, display_name, status, created_at, updated_at FROM mevo_customers WHERE id = $1 LIMIT 1',
+          [customerId],
+        );
+        if (!result.rows[0]) {
+          res.status(404).json({ success: false, error: 'Customer not found.' });
+          return;
+        }
+        res.json({ success: true, source: 'postgresql', customer: result.rows[0] });
+      } catch {
+        res.status(503).json({ success: false, error: 'The PostgreSQL customer directory is temporarily unavailable.' });
+      }
+    })();
+  });
+
+  router.get('/payments/attempts', requirePermission('payments.read'), (req, res) => {
+    void (async () => {
+      const limit = req.query.limit === undefined ? 25 : Number(req.query.limit);
+      const offset = req.query.offset === undefined ? 0 : Number(req.query.offset);
+      const status = typeof req.query.status === 'string' ? req.query.status.trim().toLowerCase() : '';
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100 ||
+          !Number.isInteger(offset) || offset < 0 || offset > 1_000_000 ||
+          (req.query.status !== undefined && (!status || status.length > 40))) {
+        res.status(400).json({ success: false, error: 'Invalid payment attempt filters or pagination.' });
+        return;
+      }
+      try {
+        const result = await pool!.query(
+          \`SELECT p.id, p.order_id, o.reference AS order_reference, p.provider,
+                  p.provider_transaction_id, p.status, p.amount_cents, p.currency,
+                  p.created_at, p.updated_at
+             FROM mevo_payment_attempts p
+             JOIN mevo_orders o ON o.id = p.order_id
+            WHERE ($1::text IS NULL OR lower(p.status) = $1)
+            ORDER BY p.created_at DESC, p.id DESC
+            LIMIT $2 OFFSET $3\`,
+          [status || null, limit, offset],
+        );
+        const count = await pool!.query(
+          \`SELECT COUNT(*)::bigint AS total
+             FROM mevo_payment_attempts p
+            WHERE ($1::text IS NULL OR lower(p.status) = $1)\`,
+          [status || null],
+        );
+        res.json({ success: true, source: 'postgresql', pagination: { limit, offset, total: Number(count.rows[0]?.total ?? 0) }, attempts: result.rows });
+      } catch {
+        res.status(503).json({ success: false, error: 'The PostgreSQL payment ledger is temporarily unavailable.' });
+      }
+    })();
+  });
+
   router.get('/session', (_req, res) => {
     const role = res.locals.adminRole as AdminRole;
     const permissions = [
@@ -657,6 +754,7 @@ export function createAdminRouter(
       'customers.read',
       'customers.support',
       'audit.read',
+      'payments.read',
     ].filter((permission) =>
       hasAdminPermission(role, permission as Parameters<typeof hasAdminPermission>[1]),
     );
