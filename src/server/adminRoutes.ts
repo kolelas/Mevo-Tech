@@ -129,5 +129,43 @@ export function createAdminRouter(
     })();
   });
 
+  router.delete('/roles/:userId', (req, res) => {
+    void (async () => {
+      const role = res.locals.adminRole as AdminRole;
+      if (!hasAdminPermission(role, 'admin.roles.manage')) {
+        res.status(403).json({ success: false, error: 'Owner permission is required to manage administrator roles.' });
+        return;
+      }
+
+      const userId = req.params.userId;
+      if (!userId || userId.length > 256) {
+        res.status(400).json({ success: false, error: 'A valid administrator user ID is required.' });
+        return;
+      }
+
+      try {
+        const result = await pool!.query(
+          `UPDATE admin_roles
+              SET enabled = FALSE, updated_at = now()
+            WHERE user_id = $1 AND enabled = TRUE
+          RETURNING user_id`,
+          [userId],
+        );
+        if (result.rows.length === 0) {
+          res.status(404).json({ success: false, error: 'Enabled administrator role not found.' });
+          return;
+        }
+        res.json({ success: true, message: 'Administrator access disabled.' });
+      } catch (error) {
+        const code = (error as { code?: string })?.code;
+        if (code === '23514') {
+          res.status(409).json({ success: false, error: 'The last enabled owner cannot be disabled.' });
+          return;
+        }
+        res.status(503).json({ success: false, error: 'Administrator role could not be disabled.' });
+      }
+    })();
+  });
+
   return router;
 }
