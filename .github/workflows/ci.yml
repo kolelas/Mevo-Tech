@@ -75,3 +75,6 @@ jobs:
 
       - name: Production build
         run: bun run build
+
+      - name: Build production container
+        run: docker build --tag mevo-tech-ci .
