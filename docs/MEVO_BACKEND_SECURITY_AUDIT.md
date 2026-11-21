@@ -10,6 +10,7 @@ Scope: backend, customer account workspace, and security. The storefront is expl
 - Product reviews require authentication and an order containing the product, and server-derived identity; input lengths/rating validated.
 - Duplicate successful webhook callbacks on already-paid orders are safely ignored and logged (basic state-level duplicate guard; not a substitute for durable provider-event idempotency).
 - Checkout item quantities must be integer values in a bounded range and invalid variants are rejected.
+- Cart validation now rejects malformed/non-bounded quantities and invalid variant IDs instead of silently pricing invalid variants as base products.
 
 ## Remaining high-risk work (not yet complete)
 1. Durable webhook idempotency: persist provider event/transaction IDs with uniqueness constraints and transactionally update order/payment/stock state. Current in-memory order state cannot provide cross-process or restart guarantees.
@@ -22,6 +23,7 @@ Scope: backend, customer account workspace, and security. The storefront is expl
 8. Security tests: route-level tests for ownership, authentication, rate-limits, callback replay, payment amount mismatch, review authorization and account export/deletion.
 9. Account profile UI: regression-check only the customer workspace; no storefront changes.
 10. Deployment controls: production secrets, backups, restore test, logging, CI, dependency and vulnerability scanning.
+11. Cart validation remains advisory and must not be treated as the final checkout authority; stock and price must be rechecked transactionally at order creation.
 
 ## Additional migration foundation committed
 - Added `002_webhook_review_constraints.sql`: a unique provider/event ID table to support durable webhook idempotency and persistent review constraints (unique customer/product/order, rating bounds, moderation state).
