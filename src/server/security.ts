@@ -181,11 +181,11 @@ export const apiRateLimiter = rateLimit({
  * Sanitizes profile update payloads to explicitly strip client-supplied privilege escalation fields.
  */
 export function sanitizeCustomerProfileUpdates<T extends Record<string, any>>(rawUpdates: T): Partial<T> {
-  const forbiddenKeys = ['role', 'isPro', 'status', 'restrictionReason', 'id', 'createdAt', 'email', 'authProvider'];
+  const allowedKeys = new Set(['name', 'phone']);
   const sanitized: Record<string, any> = {};
   for (const [key, value] of Object.entries(rawUpdates)) {
-    if (!forbiddenKeys.includes(key)) {
-      sanitized[key] = value;
+    if (allowedKeys.has(key) && typeof value === 'string' && value.length <= 200) {
+      sanitized[key] = value.trim();
     }
   }
   return sanitized as Partial<T>;
