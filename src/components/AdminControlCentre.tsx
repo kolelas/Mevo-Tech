@@ -111,17 +111,18 @@ export function AdminControlCentre() {
     setNotice('');
     try {
       if (target === 'overview') {
-        const results = await Promise.all([
-          request('/inventory/summary'),
-          request('/orders?limit=8'),
-          request('/catalog/products?limit=8'),
-          request('/support/cases?limit=8'),
+        const permissions = session.permissions;
+        const [inventoryResult, orderResult, productResult, supportResult] = await Promise.all([
+          permissions.includes('inventory.read') ? request('/inventory/summary') : Promise.resolve(null),
+          permissions.includes('orders.read') ? request('/orders?limit=8') : Promise.resolve(null),
+          permissions.includes('catalog.read') ? request('/catalog/products?limit=8') : Promise.resolve(null),
+          permissions.includes('customers.support') ? request('/support/cases?limit=8') : Promise.resolve(null),
         ]);
-        setSummary(results[0].inventory);
+        setSummary(inventoryResult?.inventory || null);
         setData([
-          ...((results[1].orders || []) as Row[]).map((r) => ({ ...r, _kind: 'order' })),
-          ...((results[2].products || []) as Row[]).map((r) => ({ ...r, _kind: 'product' })),
-          ...((results[3].cases || []) as Row[]).map((r) => ({ ...r, _kind: 'case' })),
+          ...((orderResult?.orders || []) as Row[]).map((r) => ({ ...r, _kind: 'order' })),
+          ...((productResult?.products || []) as Row[]).map((r) => ({ ...r, _kind: 'product' })),
+          ...((supportResult?.cases || []) as Row[]).map((r) => ({ ...r, _kind: 'case' })),
         ]);
       } else {
         const q = searchText ? '&search=' + encodeURIComponent(searchText) : '';
