@@ -505,7 +505,7 @@ export function createAdminRouter(
       const customerId = typeof body.customerId === 'string' && body.customerId.trim() ? body.customerId.trim() : null;
       const orderReference = typeof body.orderReference === 'string' && body.orderReference.trim() ? body.orderReference.trim() : null;
       const priority = body.priority === undefined ? 'normal' : body.priority;
-      if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) || email.length > 320 ||
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 320 ||
           !subject || subject.length > 200 || !message || message.length > 5000 ||
           (customerId && customerId.length > 128) || (orderReference && orderReference.length > 128) ||
           !['low', 'normal', 'high'].includes(priority)) {
