@@ -117,7 +117,7 @@ export function MainStore() {
   useEffect(() => {
     const handleLocationChange = () => {
       const hash = window.location.hash.replace('#', '');
-      const path = window.location.pathname.replace(/^\/+/, '');
+  const path = window.location.pathname.replace(/\/+$/, '') || '/';
 
       if (
         hash === 'storefront' ||
