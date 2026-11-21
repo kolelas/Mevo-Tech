@@ -107,3 +107,8 @@ Scope: backend, customer account workspace, and security. The storefront is expl
 - PayFast webhook signature comparison now validates the expected hexadecimal signature format and uses a timing-safe comparison; verification also requires a configured provider.
 - Added adapter regression tests for PayFast valid/forged signatures and for default/placeholder gateway configuration.
 - Important: these safeguards do not make the currently stubbed provider initiation/refund flows production-ready. Ozow, Payflex and crypto webhook verification remain fail-closed; PayFast callback origin/provider reconciliation, amount checks, and route-level tests remain required. No provider secrets were added or changed.
+
+## PostgreSQL webhook lease migration groundwork
+- Added 004_payment_webhook_leases.sql with expiring worker leases, retry counts, payload-digest conflict detection, provider transaction uniqueness handling, and lease-token-guarded event completion functions.
+- The SQL claim function distinguishes new claims, already-processed duplicates, active concurrent processing, payload conflicts, and provider transaction collisions.
+- The migration is additive and is not applied. The active API still uses the in-memory Maps database and does not call these SQL functions. Durable replay protection is therefore NOT yet active; runtime PostgreSQL integration and a single transaction covering event claim, order/payment state, inventory, and event completion are mandatory before production.
