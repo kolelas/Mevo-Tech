@@ -15,13 +15,13 @@ export class PayflexProvider implements IPaymentProvider {
     clientSecret?: string;
     environment?: string;
   }) {
-    this.clientId = config?.clientId || process.env.PAYFLEX_CLIENT_ID || 'sandbox_client_id';
-    this.clientSecret = config?.clientSecret || process.env.PAYFLEX_CLIENT_SECRET || 'sandbox_secret';
+    this.clientId = config?.clientId ?? process.env.PAYFLEX_CLIENT_ID ?? '';
+    this.clientSecret = config?.clientSecret ?? process.env.PAYFLEX_CLIENT_SECRET ?? '';
     this.environment = config?.environment || process.env.PAYFLEX_ENVIRONMENT || 'sandbox';
   }
 
   isConfigured(): boolean {
-    return Boolean(this.clientId && this.clientSecret);
+    return Boolean(this.clientId && this.clientSecret && !/sample|placeholder|sandbox/i.test(`${this.clientId} ${this.clientSecret}`));
   }
 
   async initiatePayment(params: PaymentInitiateParams): Promise<PaymentInitiateResult> {
