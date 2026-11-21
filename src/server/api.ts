@@ -570,6 +570,9 @@ apiRouter.post('/payments/initiate', async (req: Request, res: Response) => {
     if (!order) {
       return res.status(404).json({ success: false, error: 'Order not found' });
     }
+    if (!verifyCustomerOwnership(req, order.customerId, order.customerEmail)) {
+      return res.status(403).json({ success: false, error: 'Access denied. Authenticate as the order owner.' });
+    }
 
     if (order.status !== 'PENDING_PAYMENT' && order.status !== 'PAYMENT_FAILED') {
       return res.status(400).json({
@@ -1090,14 +1093,15 @@ apiRouter.post('/customer/favourites/toggle', (req: Request, res: Response) => {
 
 apiRouter.get('/customer/orders', (req: Request, res: Response) => {
   try {
-    const email = (req.query.email as string) || (req.headers['x-customer-email'] as string);
-    const customerId = (req.query.customerId as string) || (req.headers['x-customer-id'] as string);
+    const ctx = getRequesterContext(req);
+    const customerId = ctx.authenticatedCustomerId;
+    const email = ctx.authenticatedEmail;
 
-    if (!email && !customerId) {
-      return res.status(400).json({ success: false, error: 'Email or customerId required to query orders' });
+    if (!customerId && !email) {
+      return res.status(401).json({ success: false, error: 'A valid customer session is required.' });
     }
 
-    // Principle 5: Check who owns it before read or update
+    // Identity is derived from the signed token, not query/header values.
     if (!verifyCustomerOwnership(req, customerId, email)) {
       return res.status(403).json({
         success: false,
