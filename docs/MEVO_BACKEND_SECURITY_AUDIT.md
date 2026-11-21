@@ -147,3 +147,10 @@ Scope: backend, customer account workspace, and security. The storefront is expl
 - Added HTTP-level tests for missing database, invalid/missing/unregistered tokens, owner-only role grants, and invalid role input.
 - The role-management endpoint is the first active administrator route. Other existing business/admin data operations have not been exposed through this router and still require individual permission-gated route implementations before use.
 - The server creates a PostgreSQL pool only when `DATABASE_URL` is configured. This does not switch the existing Maps-based commerce runtime or apply migrations.
+
+
+## Administrator owner lockout protection
+- Added migration 005 with a database trigger that prevents disabling, deleting, or demoting the last enabled owner.
+- Added an owner-only endpoint to disable an administrator role. The endpoint maps the database's last-owner constraint to HTTP 409 and uses a parameterized update.
+- Added PostgreSQL integration assertions for the single-owner and multiple-owner cases. CI applies migration 005 and executes these assertions against its disposable PostgreSQL service.
+- Initial owner provisioning remains a deliberate manual operation after Firebase UID/email verification; no default owner, seeded identity, or backdoor is included.
