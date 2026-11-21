@@ -1131,12 +1131,23 @@ apiRouter.get('/products/:id/reviews', (req: Request, res: Response) => {
     const totalRating = reviews.reduce((sum, r) => sum + r.rating, 0);
     const averageRating = reviews.length > 0 ? Number((totalRating / reviews.length).toFixed(1)) : 5.0;
 
+    // Public review responses must not expose internal customer IDs, emails,
+    // moderation metadata, or other private fields from the stored review record.
+    const publicReviews = reviews.map((review: any) => ({
+      id: review.id,
+      productId: review.productId,
+      rating: review.rating,
+      title: review.title,
+      comment: review.comment,
+      authorName: review.authorName,
+      createdAt: review.createdAt,
+    }));
     res.json({
       success: true,
       productId: req.params.id,
-      count: reviews.length,
+      count: publicReviews.length,
       averageRating,
-      reviews,
+      reviews: publicReviews,
     });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
