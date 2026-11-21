@@ -85,3 +85,12 @@ Scope: backend, customer account workspace, and security. The storefront is expl
 - Repaired malformed literal newline escapes in the payment-state guard in `src/server/api.ts`; this was a source-integrity correction, not a storefront change.
 - Adapter tests cover Paystack current/legacy signatures, stale timestamps, multiple signature entries, downgrade resistance, event allowlisting, currency extraction, and fail-closed behavior for Payflex/Ozow/crypto. Tests are configured but remain unexecuted.
 - PayFast and Payflex initiation adapters still contain placeholder/simulated behavior; do not enable live payment until provider APIs, webhook verification, transaction reconciliation, and end-to-end tests are completed.
+
+
+## Continuous integration verification (latest)
+- Added a GitHub Actions workflow for TypeScript validation, automated tests, and the Vite production build.
+- The run for commit `602349cf54757d3612cd7d0feddcb3468aab575b` completed successfully: typecheck passed, all 59 tests passed, and the production build completed.
+- CI surfaced and enabled correction of malformed raw-body middleware line breaks in `server.ts` and a TypeScript narrowing issue in the customer-orders route.
+- The repository's pre-existing `bun.lock` did not match `package.json`; CI currently runs `bun install` to refresh it in the runner. The refreshed lockfile is not committed yet, so frozen-lockfile installs remain a follow-up cleanup.
+- The build reports non-blocking warnings for `__dirname` in `vite.config.ts` and a JavaScript chunk above 500 kB. These are recorded for later build optimization and do not block this verification.
+- This CI result validates the current branch snapshot only; it is not staging, live payment, database migration, or production deployment approval.
