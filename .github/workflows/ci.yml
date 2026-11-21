@@ -62,6 +62,8 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f src/server/migrations/004_payment_webhook_leases.sql
           psql -v ON_ERROR_STOP=1 -f src/server/migrations/005_admin_owner_guard.sql
           psql -v ON_ERROR_STOP=1 -f src/server/migrations/006_admin_operations.sql
+          psql -v ON_ERROR_STOP=1 -f src/server/migrations/007_commerce_runtime_replacement.sql
+          psql -v ON_ERROR_STOP=1 -f tests/sql/commerce_runtime.sql
           psql -v ON_ERROR_STOP=1 -f tests/sql/admin_owner_guard.sql
           psql -v ON_ERROR_STOP=1 -f tests/sql/admin_operations.sql
           psql -v ON_ERROR_STOP=1 -f tests/sql/payment_webhook_leases.sql
