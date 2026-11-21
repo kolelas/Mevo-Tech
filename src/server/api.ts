@@ -592,6 +592,12 @@ apiRouter.post('/payments/initiate', async (req: Request, res: Response) => {
     }
 
     const provider = getPaymentProvider(providerId as PaymentProvider);
+    if (!provider.isConfigured()) {
+      return res.status(503).json({
+        success: false,
+        error: 'This payment provider is not configured. Please choose another payment method.',
+      });
+    }
     const appUrl = process.env.APP_URL || 'http://localhost:3000';
 
     const paymentAttempt: PaymentAttempt = {
