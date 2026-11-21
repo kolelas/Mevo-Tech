@@ -1,19 +1,23 @@
 # Mevo Tech — Cloudflare staging deployment
 
-This deployment target is intentionally named **mevo-tech-staging**. It is separate from the existing live storefront. It does not alter the production domain, DNS, storefront, or live data.
+This is an optional deployment target named **mevo-tech-staging**. It is separate from the existing live storefront. It does not alter the production domain, DNS, storefront, or live data.
 
 ## Architecture
 
-- Cloudflare Worker: request gateway and isolated staging entry point.
+- Cloudflare Worker: request gateway.
 - Cloudflare Container: runs the existing Node 22 + Express application and serves the existing Vite-built storefront without redesigning it.
 - PostgreSQL: connect a disposable staging database through `DATABASE_URL`.
 - Existing migrations are applied only to the staging database after review. Never point this staging Worker at a production database.
 
-Cloudflare Containers are available on the Workers Paid plan. A Cloudflare account, Workers Paid plan, and Docker-compatible build environment are required for the first deployment.
+## Account plan and cost
+
+Cloudflare Containers are **not available on the Workers Free plan**. They require Workers Paid, currently starting at USD $5/month, with additional usage-based container, Worker, Durable Object and egress charges possible. See the official [Containers pricing](https://developers.cloudflare.com/containers/platform/pricing/) and [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/).
+
+This configuration is kept in the repository so it can be activated later if you upgrade Cloudflare. It is not required for the free staging deployment.
 
 ## Required Cloudflare secrets
 
-Set these in Workers & Pages → mevo-tech-staging → Settings → Variables and Secrets. Use encrypted secrets for credentials:
+When you choose to activate this target, configure these as encrypted secrets in the Cloudflare Worker:
 
 - `JWT_SECRET` — required; generate a unique high-entropy staging secret.
 - `DATABASE_URL` — required to exercise PostgreSQL-backed administrator features; point it to a disposable staging PostgreSQL database.
@@ -23,16 +27,24 @@ Set these in Workers & Pages → mevo-tech-staging → Settings → Variables an
 
 Do not copy production secrets into staging. Do not commit secret values to Git.
 
-## GitHub / Workers Builds
+## Deployment
 
-1. In Cloudflare, open Workers & Pages and create or connect a Worker named `mevo-tech-staging`.
+1. Use a Cloudflare Workers Paid account.
 2. Connect the `kolelas/Mevo-Tech` GitHub repository.
-3. Use `feature/mevo-commerce-os-foundation` as the staging branch. Do not set this feature branch as the production branch for the existing live site.
-4. Use the repository root as the build root. Install dependencies with Bun, run the normal CI checks, and use `npx wrangler deploy` as the staging deploy command.
-5. Configure the encrypted secrets above before the first deploy.
-6. Confirm the resulting `*.workers.dev` URL and test `/health`, customer account UI, admin authentication, and dummy catalogue/order/support workflows.
+3. Deploy branch `feature/mevo-commerce-os-foundation` as a separate Worker named `mevo-tech-staging`.
+4. Use repository root as build root, install dependencies, and run `bun run deploy:cloudflare:staging`.
+5. Ensure Docker is running in the deployment environment because Wrangler builds and pushes the container image from the Dockerfile.
+6. Configure the encrypted secrets above and verify the resulting `*.workers.dev` URL.
 
-Alternatively, from a trusted local checkout with Docker running and Wrangler authenticated to the intended Cloudflare account, run `bun install`, `bun run build`, then `bun run deploy:cloudflare:staging`.
+From a trusted local checkout with Docker running and Wrangler authenticated to the intended Cloudflare account:
+
+```bash
+bun install
+bun run lint
+bun run test
+bun run build
+bun run deploy:cloudflare:staging
+```
 
 ## Staging database
 
@@ -41,6 +53,6 @@ Create a new, empty PostgreSQL database. Apply migrations 001–006 in the order
 ## Current boundaries
 
 - This configuration targets a separate staging Worker. It does not deploy to the live website.
-- The current production storefront is left unchanged.
+- The existing production storefront is left unchanged.
 - No production DNS changes, domain binding, merge, production migration, or production deployment is part of this setup.
-- Before a production cutover, verify the complete staging workflows, backup/restore, provider integrations, secrets, and existing live hosting arrangement.
+- Before a production cutover, verify complete staging workflows, backup/restore, provider integrations, secrets, and existing live hosting arrangement.
