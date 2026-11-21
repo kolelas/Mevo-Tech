@@ -111,8 +111,8 @@ export class PaystackProvider implements IPaymentProvider {
     body: Record<string, unknown> | string
   ): Promise<PaymentWebhookVerificationResult> {
     const rawBody = typeof body === 'string' ? body : JSON.stringify(body);
-    const signingSecretHeader = headers['paystack-signature'] || headers['Paystack-Signature'];
-    const legacySignature = headers['x-paystack-signature'] || headers['X-Paystack-Signature'] || '';
+    const signingSecretHeader = headers['paystack-signature'] ?? headers['Paystack-Signature'];
+    const legacySignature = headers['x-paystack-signature'] ?? headers['X-Paystack-Signature'] ?? '';
 
     // Do not fall back to the deprecated header when a current-format header is
     // present but invalid; that would permit a signature downgrade.
