@@ -15,12 +15,12 @@ export class PaystackProvider implements IPaymentProvider {
     currency?: string;
   }) {
     this.publicKey = config?.publicKey || process.env.PAYSTACK_PUBLIC_KEY || 'pk_test_sample';
-    this.secretKey = config?.secretKey || process.env.PAYSTACK_SECRET_KEY || 'sk_test_sample';
+    this.secretKey = config?.secretKey ?? process.env.PAYSTACK_SECRET_KEY ?? '';
     this.currency = config?.currency || process.env.PAYSTACK_CURRENCY || 'ZAR';
   }
 
   isConfigured(): boolean {
-    return Boolean(this.secretKey);
+    return Boolean(this.secretKey && !this.secretKey.includes('sample') && !this.secretKey.includes('placeholder'));
   }
 
   verifySignature(rawBody: string, signature: string): boolean {
