@@ -66,6 +66,16 @@ test('Paystack signing-secret header rejects malformed and duplicate timestamp f
   assert.equal(provider.verifySigningSecretSignature('{}', 't=not-a-time,v1=whk_key:' + 'a'.repeat(128), now), false);
 });
 
+test('Paystack non-charge events cannot mark an order as paid', async () => {
+  const secret = 'legacy-secret';
+  const provider = new PaystackProvider({ secretKey: secret });
+  const payload = JSON.stringify({ event: 'transfer.success', data: { reference: 'MEV-TRANSFER', status: 'success', amount: 50000, id: 987 } });
+  const signature = crypto.createHmac('sha512', secret).update(payload).digest('hex');
+  const result = await provider.verifyWebhook({ 'x-paystack-signature': signature }, payload);
+  assert.equal(result.isValid, true);
+  assert.equal(result.status, 'PENDING');
+});
+
 test('Ozow and crypto webhook verification remain fail-closed', async () => {
   const payload = JSON.stringify({ status: 'SUCCESSFUL', amount: '100.00', reference: 'MEV-TEST' });
   const ozow = await new OzowProvider().verifyWebhook({}, payload);
