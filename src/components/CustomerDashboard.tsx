@@ -345,7 +345,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-neutral-100/70 pb-20 animate-in fade-in">
+    <div className="account-workspace min-h-screen bg-neutral-100/70 pb-20 animate-in fade-in">
       {/* Top Banner & Customer Hero */}
       <div className="bg-neutral-900 text-white border-b border-neutral-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
