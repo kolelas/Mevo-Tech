@@ -52,7 +52,7 @@ export class PaystackProvider implements IPaymentProvider {
   ): Promise<PaymentWebhookVerificationResult> {
     const rawBody = typeof body === 'string' ? body : JSON.stringify(body);
     const signature = headers['x-paystack-signature'] || '';
-    const isSignatureValid = this.isConfigured() ? this.verifySignature(rawBody, signature) : true;
+    const isSignatureValid = this.isConfigured() && this.verifySignature(rawBody, signature);
 
     const data = typeof body === 'string' ? JSON.parse(body) : body;
     const eventData = (data.data || data) as Record<string, unknown>;
