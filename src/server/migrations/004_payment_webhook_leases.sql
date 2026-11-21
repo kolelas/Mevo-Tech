@@ -87,8 +87,39 @@ BEGIN
       now() + make_interval(secs => p_lease_seconds), 1, now()
     );
   EXCEPTION WHEN unique_violation THEN
-    -- A different event ID attempting to reuse the same provider transaction
-    -- ID is not a replay of the same event; it is a transaction collision.
+    -- The unique violation may be a concurrent delivery of this same event,
+    -- or a different event attempting to reuse the provider transaction ID.
+    -- Re-read the event after the INSERT subtransaction has rolled back so
+    -- concurrent same-event deliveries receive the correct idempotent result.
+    SELECT * INTO existing_event
+      FROM payment_webhook_events
+     WHERE provider = p_provider AND event_id = p_event_id
+     FOR UPDATE;
+
+    IF FOUND THEN
+      IF existing_event.payload_digest <> p_payload_digest THEN
+        RETURN 'payload_conflict';
+      END IF;
+      IF existing_event.processing_status = 'processed' THEN
+        RETURN 'duplicate';
+      END IF;
+      IF existing_event.processing_status = 'processing'
+         AND existing_event.lease_expires_at > now() THEN
+        RETURN 'in_progress';
+      END IF;
+
+      UPDATE payment_webhook_events
+         SET processing_status = 'processing',
+             lease_token = p_lease_token,
+             lease_expires_at = now() + make_interval(secs => p_lease_seconds),
+             attempt_count = attempt_count + 1,
+             updated_at = now(),
+             error_summary = NULL
+       WHERE id = existing_event.id;
+      RETURN 'claimed';
+    END IF;
+
+    -- No matching event row means another event owns the provider transaction.
     RETURN 'transaction_conflict';
   END;
 
