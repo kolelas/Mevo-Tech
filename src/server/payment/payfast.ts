@@ -23,7 +23,11 @@ export class PayFastProvider implements IPaymentProvider {
   }
 
   isConfigured(): boolean {
-    return Boolean(\n      this.merchantId &&\n      this.merchantKey &&\n      !/sample|placeholder|change.?me|testpassphrase/i.test(`${this.merchantId} ${this.merchantKey} ${this.passphrase}`)\n    );
+    return Boolean(
+      this.merchantId &&
+      this.merchantKey &&
+      !/sample|placeholder|change.?me|testpassphrase/i.test(`${this.merchantId} ${this.merchantKey} ${this.passphrase}`)
+    );
   }
 
   /**
