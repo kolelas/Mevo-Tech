@@ -26,7 +26,7 @@ async function startServer() {
   );
 
   // Middleware for JSON & form parsing
-  app.use(express.json({ limit: '2mb' }));
+  app.use(express.json({\n    limit: '2mb',\n    verify: (req, _res, buf) => {\n      // Preserve exact JSON bytes for cryptographic webhook verification.\n      (req as express.Request & { rawBody?: string }).rawBody = buf.toString('utf8');\n    },\n  }));
   app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
   // Health check
