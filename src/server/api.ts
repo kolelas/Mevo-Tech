@@ -1186,13 +1186,11 @@ apiRouter.post('/products/:productId/price-alerts', emailFormRateLimiter, (req: 
 
 apiRouter.get('/price-alerts', (req: Request, res: Response) => {
   try {
-    const email = req.query.email as string | undefined;
-    if (email) {
-      const alerts = db.getPriceAlertsByEmail(email);
-      return res.json({ success: true, count: alerts.length, alerts });
+    const ctx = getRequesterContext(req);
+    if (!ctx.authenticatedCustomerId && !ctx.authenticatedEmail) {
+      return res.status(401).json({ success: false, error: 'A valid customer session is required.' });
     }
-
-    const alerts = db.getAllPriceAlerts();
+    const alerts = db.getPriceAlertsByEmail(ctx.authenticatedEmail || '');
     res.json({ success: true, count: alerts.length, alerts });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -1280,6 +1278,9 @@ apiRouter.post('/contact/send', emailFormRateLimiter, (req: Request, res: Respon
 
 
 apiRouter.post('/products/:productId/simulate-price-drop', (req: Request, res: Response) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ success: false, error: 'Not found' });
+  }
   try {
     const { productId } = req.params;
     const { newPriceCents } = req.body;
