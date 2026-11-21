@@ -240,7 +240,7 @@ function makeTransactionalPool(role: string, clientQuery: (sql: string, values: 
     release: () => undefined,
   };
   const pool = {
-    query: async (sql: string) => sql.includes('SELECT role') ? { rows: [{ role }] } : { rows: [] },
+    query: async (sql: string, values: unknown[] = []) => sql.includes('SELECT role') ? { rows: [{ role }] } : clientQuery(sql, values),
     connect: async () => client,
   };
   return { pool: pool as unknown as Pick<Pool, 'query'>, transactionStatements };
