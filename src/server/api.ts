@@ -705,6 +705,10 @@ apiRouter.post('/payments/:provider/webhook', async (req: Request, res: Response
 
 // Developer sandbox simulated webhook for instant verification in dev
 apiRouter.post('/payments/simulate-webhook', async (req: Request, res: Response) => {
+  // Simulation must never be available in production deployments.
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ success: false, error: 'Not found' });
+  }
   try {
     const { orderReference, outcome, provider } = req.body;
     const order = db.getOrderByReference(orderReference);
