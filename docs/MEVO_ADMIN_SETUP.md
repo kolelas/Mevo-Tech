@@ -68,3 +68,17 @@ The administrator API now also exposes two transactional write operations:
 - `POST /api/admin/inventory/adjustments` — requires `inventory.write`. Body: `productId`, non-zero signed integer `quantity`, optional `reference`, and optional `note`. A row lock protects stock arithmetic. The operation rejects adjustments that would reduce on-hand stock below reserved units.
 
 Each successful change updates the product and inserts its inventory movement (where applicable) and administrator audit event in one PostgreSQL transaction. Failures roll back rather than leaving partial ledger/audit records. These operations are PostgreSQL-only and do not alter the Maps-backed storefront runtime. They are not enabled against production until the database is deliberately provisioned and the API is deployed under an approved change plan.
+
+
+## Order fulfilment, support and audit APIs
+
+Migration `006_admin_operations.sql` adds shipment metadata, support-case records/events, and indexes for audit review. Apply it after migrations 001–005 on a reviewed non-production database.
+
+- `GET /api/admin/orders` — requires `orders.read`; bounded pagination and optional status filter.
+- `PATCH /api/admin/orders/:reference/fulfilment` — requires `orders.fulfil`; permits only PAID → PROCESSING → SHIPPED → DELIVERED. Shipping requires carrier and tracking number. Each transition locks the order row and writes both an order-status event and an audit event atomically.
+- `GET /api/admin/support/cases` — requires `customers.support`; bounded queue with priority ordering and optional status filter.
+- `POST /api/admin/support/cases` — requires `customers.support`; creates a manually captured support case with a case event and audit event in one transaction.
+- `PATCH /api/admin/support/cases/:caseId` — requires `customers.support`; updates allowlisted status, priority, assignment and resolution fields with event/audit history.
+- `GET /api/admin/audit/events` — requires the restricted `audit.read` permission (owner/admin only); bounded pagination and optional exact action filter.
+
+All routes are PostgreSQL-only. They do not read or mutate the legacy Maps store. They are not yet connected to the existing customer contact form or production order database.
