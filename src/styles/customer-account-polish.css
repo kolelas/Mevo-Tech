@@ -1,0 +1,31 @@
+/* Mevo Tech customer-account visual polish — scoped to the account workspace */
+.account-workspace {
+  color-scheme: light;
+}
+.account-workspace .account-panel {
+  border: 1px solid rgb(226 232 240);
+  border-radius: 1.25rem;
+  background: white;
+  box-shadow: 0 8px 30px rgba(15, 23, 42, .045);
+  transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+.account-workspace .account-panel:hover {
+  border-color: rgb(203 213 225);
+  box-shadow: 0 12px 36px rgba(15, 23, 42, .075);
+}
+.account-workspace :is(button, a, input, select, textarea):focus-visible {
+  outline: 3px solid rgba(124, 58, 237, .45);
+  outline-offset: 2px;
+}
+.account-workspace .account-accent {
+  background: linear-gradient(135deg, #6d28d9, #9333ea 55%, #c026d3);
+}
+@media (max-width: 640px) {
+  .account-workspace .account-panel { border-radius: 1rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .account-workspace *, .account-workspace *::before, .account-workspace *::after {
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+  }
+}
