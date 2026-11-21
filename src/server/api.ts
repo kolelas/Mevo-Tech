@@ -388,6 +388,10 @@ apiRouter.post('/checkout/reserve', checkoutRateLimiter, (req: Request, res: Res
 apiRouter.post('/checkout/create-order', checkoutRateLimiter, (req: Request, res: Response) => {
   try {
     const { items, shippingAddress, shippingMethodId, paymentMethod, discountCode, sessionId, customerId } = req.body;
+    const requester = getRequesterContext(req);
+    if (!requester.authenticatedCustomerId || requester.authenticatedCustomerId !== customerId) {
+      return res.status(401).json({ success: false, error: 'A valid customer session for this account is required.' });
+    }
 
     if (!Array.isArray(items) || items.length === 0 || !shippingAddress || !paymentMethod) {
       return res.status(400).json({ success: false, error: 'Missing required order fields' });
@@ -962,16 +966,8 @@ apiRouter.get('/customer/me', (req: Request, res: Response) => {
       }
     }
 
-    // 2. Fallback to session headers or query parameters
-    if (!customer) {
-      const customerId = (req.headers['x-customer-id'] as string) || (req.query.customerId as string);
-      const email = (req.headers['x-customer-email'] as string) || (req.query.email as string);
-      if (customerId) {
-        customer = db.getCustomerById(customerId);
-      } else if (email) {
-        customer = db.getCustomerByEmail(email);
-      }
-    }
+    // No caller-controlled headers or query parameters may establish account identity.
+    // Customer profile access requires a cryptographically verified bearer token.
 
     if (!customer) {
       return res.status(404).json({ success: false, error: 'Customer account not found' });
@@ -986,9 +982,10 @@ apiRouter.get('/customer/me', (req: Request, res: Response) => {
 // POPIA Section 14 Customer Data Portability Export
 apiRouter.get('/customer/export-data', (req: Request, res: Response) => {
   try {
-    const customerId = (req.query.customerId as string) || (req.headers['x-customer-id'] as string);
+    const requester = getRequesterContext(req);
+    const customerId = requester.authenticatedCustomerId;
     if (!customerId) {
-      return res.status(400).json({ success: false, error: 'customerId required for POPIA export' });
+      return res.status(401).json({ success: false, error: 'A valid customer session is required.' });
     }
 
     // Principle 5: Check who owns it before export / update / delete
