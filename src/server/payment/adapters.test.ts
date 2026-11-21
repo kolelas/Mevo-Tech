@@ -30,7 +30,7 @@ test('Paystack rejects missing and malformed legacy signatures and placeholder c
 test('Paystack signing-secret header validates timestamped HMAC and supports rotation signatures', async () => {
   const webhookSecret = 'whsec_test-signing-secret';
   const provider = new PaystackProvider({ webhookSecret });
-  const payload = '{"event":"charge.success","data":{"reference":"MEV-NEW","status":"success","amount":12345}}';
+  const payload = '{"event":"charge.success","data":{"reference":"MEV-NEW","status":"success","amount":12345,"currency":"ZAR"}}';
   const timestamp = Math.floor(Date.now() / 1000);
   const signature = crypto.createHmac('sha512', webhookSecret).update(`${timestamp}.${payload}`).digest('hex');
   const rotationSignature = '0'.repeat(128);
@@ -40,6 +40,7 @@ test('Paystack signing-secret header validates timestamped HMAC and supports rot
   assert.equal(result.signatureVerified, true);
   assert.equal(result.orderReference, 'MEV-NEW');
   assert.equal(result.amountCents, 12345);
+  assert.equal(result.currency, 'ZAR');
 });
 
 test('Paystack signing-secret header rejects stale timestamps and invalid current header cannot downgrade', async () => {
