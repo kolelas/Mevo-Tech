@@ -227,3 +227,135 @@ test('inventory manager can read PostgreSQL inventory summary and movement ledge
     assert.ok(statements.every((sql) => sql.includes('mevo_inventory_movements') || sql.includes('FROM mevo_products')));
   });
 });
+
+
+function makeTransactionalPool(role: string, clientQuery: (sql: string, values: unknown[]) => Promise<{ rows: unknown[] }>) {
+  const transactionStatements: string[] = [];
+  const client = {
+    query: async (sql: string, values: unknown[] = []) => {
+      transactionStatements.push(sql);
+      return clientQuery(sql, values);
+    },
+    release: () => undefined,
+  };
+  const pool = {
+    query: async (sql: string) => sql.includes('SELECT role') ? { rows: [{ role }] } : { rows: [] },
+    connect: async () => client,
+  };
+  return { pool: pool as unknown as Pick<Pool, 'query'>, transactionStatements };
+}
+
+test('inventory adjustment locks stock and commits product, movement, and audit together', async () => {
+  const writes: Array<{ sql: string; values: unknown[] }> = [];
+  const fake = makeTransactionalPool('inventory_manager', async (sql, values) => {
+    if (sql.startsWith('SELECT id, stock_on_hand')) return { rows: [{ id: 'p-1', stock_on_hand: 10, stock_reserved: 3 }] };
+    writes.push({ sql, values });
+    if (sql.includes('INSERT INTO mevo_inventory_movements')) {
+      return { rows: [{ id: 9, product_id: 'p-1', quantity: 5 }] };
+    }
+    return { rows: [] };
+  });
+  const router = createAdminRouter(fake.pool, async () => identity);
+  await withServer(router, async (base) => {
+    const response = await fetch(`${base}/admin/inventory/adjustments`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer verified', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productId: 'p-1', quantity: 5, reference: 'GRN-22', note: 'Received shipment' }),
+    });
+    assert.equal(response.status, 201);
+    const body = await response.json();
+    assert.deepEqual(body.stock, { onHand: 15, reserved: 3, available: 12 });
+    assert.equal(writes.length, 3);
+    assert.ok(fake.transactionStatements.includes('BEGIN'));
+    assert.ok(fake.transactionStatements.includes('COMMIT'));
+    assert.ok(writes.some((entry) => entry.sql.includes('INSERT INTO mevo_inventory_movements')));
+    assert.ok(writes.some((entry) => entry.sql.includes('INSERT INTO mevo_audit_events')));
+  });
+});
+
+test('inventory adjustment refuses to undercut reserved stock and rolls back', async () => {
+  const fake = makeTransactionalPool('inventory_manager', async (sql) => {
+    if (sql.startsWith('SELECT id, stock_on_hand')) return { rows: [{ id: 'p-1', stock_on_hand: 8, stock_reserved: 5 }] };
+    throw new Error('No write should occur');
+  });
+  const router = createAdminRouter(fake.pool, async () => identity);
+  await withServer(router, async (base) => {
+    const response = await fetch(`${base}/admin/inventory/adjustments`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer verified', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productId: 'p-1', quantity: -4 }),
+    });
+    assert.equal(response.status, 409);
+    assert.ok(fake.transactionStatements.includes('ROLLBACK'));
+    assert.ok(!fake.transactionStatements.some((sql) => sql.startsWith('UPDATE mevo_products')));
+  });
+});
+
+test('catalogue edit is transactional, allowlisted, and audit logged', async () => {
+  const writes: Array<{ sql: string; values: unknown[] }> = [];
+  const fake = makeTransactionalPool('admin', async (sql, values) => {
+    if (sql.startsWith('SELECT id, price_cents')) {
+      return { rows: [{ id: 'p-1', price_cents: 10000, promotional_price_cents: 9000 }] };
+    }
+    writes.push({ sql, values });
+    if (sql.startsWith('UPDATE mevo_products')) {
+      return { rows: [{ id: 'p-1', name: 'Updated keyboard', price_cents: 11000 }] };
+    }
+    return { rows: [] };
+  });
+  const router = createAdminRouter(fake.pool, async () => identity);
+  await withServer(router, async (base) => {
+    const response = await fetch(`${base}/admin/catalog/products/p-1`, {
+      method: 'PATCH',
+      headers: { Authorization: 'Bearer verified', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Updated keyboard', priceCents: 11000 }),
+    });
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).product.name, 'Updated keyboard');
+    assert.equal(writes.length, 2);
+    assert.match(writes[0].sql, /UPDATE mevo_products SET name = \$1, price_cents = \$2/);
+    assert.ok(writes.some((entry) => entry.sql.includes('INSERT INTO mevo_audit_events')));
+    assert.ok(fake.transactionStatements.includes('COMMIT'));
+  });
+});
+
+test('catalogue edit rejects unknown fields and invalid promotional pricing', async () => {
+  const fake = makeTransactionalPool('admin', async (sql) => {
+    if (sql.startsWith('SELECT id, price_cents')) {
+      return { rows: [{ id: 'p-1', price_cents: 10000, promotional_price_cents: null }] };
+    }
+    throw new Error('No write expected');
+  });
+  const router = createAdminRouter(fake.pool, async () => identity);
+  await withServer(router, async (base) => {
+    const unknown = await fetch(`${base}/admin/catalog/products/p-1`, {
+      method: 'PATCH',
+      headers: { Authorization: 'Bearer verified', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ price: 1 }),
+    });
+    assert.equal(unknown.status, 400);
+    const invalidPromo = await fetch(`${base}/admin/catalog/products/p-1`, {
+      method: 'PATCH',
+      headers: { Authorization: 'Bearer verified', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ promotionalPriceCents: 12000 }),
+    });
+    assert.equal(invalidPromo.status, 400);
+    assert.ok(fake.transactionStatements.filter((sql) => sql === 'BEGIN').length >= 1);
+  });
+});
+
+test('customer support cannot perform catalogue or inventory writes', async () => {
+  const fake = makeTransactionalPool('customer_support', async () => { throw new Error('No transaction expected'); });
+  const router = createAdminRouter(fake.pool, async () => identity);
+  await withServer(router, async (base) => {
+    const headers = { Authorization: 'Bearer verified', 'Content-Type': 'application/json' };
+    const catalog = await fetch(`${base}/admin/catalog/products/p-1`, {
+      method: 'PATCH', headers, body: JSON.stringify({ active: false }),
+    });
+    const inventory = await fetch(`${base}/admin/inventory/adjustments`, {
+      method: 'POST', headers, body: JSON.stringify({ productId: 'p-1', quantity: 2 }),
+    });
+    assert.equal(catalog.status, 403);
+    assert.equal(inventory.status, 403);
+  });
+});
