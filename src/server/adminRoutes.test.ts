@@ -360,3 +360,127 @@ test('customer support cannot perform catalogue or inventory writes', async () =
     assert.equal(inventory.status, 403);
   });
 });
+
+
+test('fulfilment manager can advance paid order to processing with event and audit transaction', async () => {
+  const writes: string[] = [];
+  const fake = makeTransactionalPool('fulfilment_manager', async (sql) => {
+    if (sql.startsWith('SELECT reference, status')) return { rows: [{ reference: 'MT-100', status: 'PAID' }] };
+    writes.push(sql);
+    if (sql.startsWith('UPDATE mevo_orders')) return { rows: [{ reference: 'MT-100', status: 'PROCESSING' }] };
+    return { rows: [] };
+  });
+  const router = createAdminRouter(fake.pool, async () => identity);
+  await withServer(router, async (base) => {
+    const response = await fetch(`${base}/admin/orders/MT-100/fulfilment`, {
+      method: 'PATCH',
+      headers: { Authorization: 'Bearer verified', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'PROCESSING', note: 'Picked and packed' }),
+    });
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).order.status, 'PROCESSING');
+    assert.ok(writes.some((sql) => sql.includes('INSERT INTO order_status_events')));
+    assert.ok(writes.some((sql) => sql.includes('INSERT INTO mevo_audit_events')));
+    assert.ok(fake.transactionStatements.includes('COMMIT'));
+  });
+});
+
+test('fulfilment rejects skipped order states and shipping without tracking', async () => {
+  const fake = makeTransactionalPool('fulfilment_manager', async (sql) => {
+    if (sql.startsWith('SELECT reference, status')) return { rows: [{ reference: 'MT-101', status: 'PAID' }] };
+    throw new Error('No write expected');
+  });
+  const router = createAdminRouter(fake.pool, async () => identity);
+  await withServer(router, async (base) => {
+    const headers = { Authorization: 'Bearer verified', 'Content-Type': 'application/json' };
+    const skipped = await fetch(`${base}/admin/orders/MT-101/fulfilment`, {
+      method: 'PATCH', headers, body: JSON.stringify({ status: 'SHIPPED', carrier: 'Courier' }),
+    });
+    assert.equal(skipped.status, 400);
+    const wrongTransition = await fetch(`${base}/admin/orders/MT-101/fulfilment`, {
+      method: 'PATCH', headers, body: JSON.stringify({ status: 'DELIVERED' }),
+    });
+    assert.equal(wrongTransition.status, 409);
+    assert.ok(!fake.transactionStatements.some((sql) => sql.startsWith('UPDATE mevo_orders')));
+  });
+});
+
+test('customer support can create and update a support case with audit history', async () => {
+  const writes: string[] = [];
+  const fake = makeTransactionalPool('customer_support', async (sql) => {
+    writes.push(sql);
+    if (sql.startsWith('INSERT INTO mevo_support_cases')) {
+      return { rows: [{ id: 'case-1', status: 'open', subject: 'Order enquiry' }] };
+    }
+    if (sql.startsWith('SELECT id, status FROM mevo_support_cases')) {
+      return { rows: [{ id: 'case-1', status: 'open' }] };
+    }
+    if (sql.startsWith('UPDATE mevo_support_cases')) {
+      return { rows: [{ id: 'case-1', status: 'resolved', subject: 'Order enquiry' }] };
+    }
+    return { rows: [] };
+  });
+  const router = createAdminRouter(fake.pool, async () => identity);
+  await withServer(router, async (base) => {
+    const headers = { Authorization: 'Bearer verified', 'Content-Type': 'application/json' };
+    const created = await fetch(`${base}/admin/support/cases`, {
+      method: 'POST', headers,
+      body: JSON.stringify({ customerEmail: 'customer@example.com', subject: 'Order enquiry', message: 'Please check delivery.' }),
+    });
+    assert.equal(created.status, 201);
+    const updated = await fetch(`${base}/admin/support/cases/case-1`, {
+      method: 'PATCH', headers,
+      body: JSON.stringify({ status: 'resolved', resolutionNote: 'Tracking sent to customer.' }),
+    });
+    assert.equal(updated.status, 200);
+    assert.ok(writes.some((sql) => sql.includes('INSERT INTO mevo_support_case_events')));
+    assert.ok(writes.some((sql) => sql.includes('INSERT INTO mevo_audit_events')));
+    assert.ok(fake.transactionStatements.filter((sql) => sql === 'COMMIT').length >= 2);
+  });
+});
+
+test('audit log access is restricted to owner and administrator roles', async () => {
+  const supportFake = makeTransactionalPool('customer_support', async () => { throw new Error('No query expected'); });
+  const supportRouter = createAdminRouter(supportFake.pool, async () => identity);
+  await withServer(supportRouter, async (base) => {
+    const denied = await fetch(`${base}/admin/audit/events`, {
+      headers: { Authorization: 'Bearer verified' },
+    });
+    assert.equal(denied.status, 403);
+  });
+
+  const adminFake = makeTransactionalPool('admin', async (sql) => {
+    if (sql.includes('COUNT(*)')) return { rows: [{ total: '0' }] };
+    return { rows: [] };
+  });
+  const adminRouter = createAdminRouter(adminFake.pool, async () => identity);
+  await withServer(adminRouter, async (base) => {
+    const allowed = await fetch(`${base}/admin/audit/events?limit=10`, {
+      headers: { Authorization: 'Bearer verified' },
+    });
+    assert.equal(allowed.status, 200);
+    const body = await allowed.json();
+    assert.equal(body.source, 'postgresql');
+    assert.equal(body.events.length, 0);
+  });
+});
+
+test('order listing is PostgreSQL-backed and bounded', async () => {
+  const fake = makeTransactionalPool('fulfilment_manager', async (sql) => {
+    if (sql.includes('COUNT(*)')) return { rows: [{ total: '1' }] };
+    return { rows: [{ reference: 'MT-200', status: 'PAID' }] };
+  });
+  const router = createAdminRouter(fake.pool, async () => identity);
+  await withServer(router, async (base) => {
+    const response = await fetch(`${base}/admin/orders?status=PAID&limit=10`, {
+      headers: { Authorization: 'Bearer verified' },
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.orders[0].reference, 'MT-200');
+    const invalid = await fetch(`${base}/admin/orders?limit=1000`, {
+      headers: { Authorization: 'Bearer verified' },
+    });
+    assert.equal(invalid.status, 400);
+  });
+});
