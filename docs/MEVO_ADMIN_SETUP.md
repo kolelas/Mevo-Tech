@@ -47,3 +47,14 @@ The role API can also disable a staff role with `DELETE /api/admin/roles/<FIREBA
 The admin router currently exposes only session inspection and role assignment/revocation. Product, inventory, order, customer-support, payment, and audit-log management endpoints are not yet connected. The existing commerce runtime still uses in-memory Maps; setting `DATABASE_URL` does not migrate commerce data or make the store persistent.
 
 Do not run production migrations, configure production credentials, or deploy this feature until explicitly approved and separately reviewed.
+
+
+## PostgreSQL-backed read APIs
+
+After the additive commerce migrations are applied to a non-production PostgreSQL database and administrator access is configured, the following routes are available under `/api/admin`:
+
+- `GET /catalog/products` — requires `catalog.read`; supports bounded `limit` (1–100), `offset`, and optional `search` (up to 100 characters). Returns only the PostgreSQL `mevo_products` projection and pagination metadata.
+- `GET /inventory/summary` — requires `inventory.read`; returns aggregate on-hand, reserved, available, active and out-of-stock counts from `mevo_products`.
+- `GET /inventory/movements` — requires `inventory.read`; returns a bounded recent movement ledger, optionally filtered by `productId`.
+
+These are read-only PostgreSQL endpoints. They deliberately do not read from or write to the legacy in-memory Maps runtime. Inventory mutation, catalogue mutation, order fulfilment and customer-support operations are not yet exposed through this router.
