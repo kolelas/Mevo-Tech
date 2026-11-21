@@ -671,26 +671,27 @@ apiRouter.post('/payments/:provider/webhook', async (req: Request, res: Response
       expectedCents: order.totalCents,
       receivedCents: verification.amountCents,
     });
+    const currencyMatches = verification.currency.toUpperCase() === order.currency.toUpperCase();
 
     if (verification.status === 'SUCCESSFUL') {
-      if (!amountCheck.isValid) {
+      if (!amountCheck.isValid || !currencyMatches) {
         db.recordAuditLog({
           actor: `${providerId.toUpperCase()} Webhook`,
           role: 'system',
-          action: 'PAYMENT_AMOUNT_MISMATCH',
+          action: 'PAYMENT_AMOUNT_CURRENCY_MISMATCH',
           targetType: 'PAYMENT',
           targetId: order.reference,
           category: 'payment_failure',
           severity: 'critical',
-          details: `Amount mismatch detected for ${order.reference}! Expected R ${(order.totalCents / 100).toFixed(2)}, received R ${(verification.amountCents / 100).toFixed(2)}`,
+          details: `Payment amount/currency mismatch for ${order.reference}. Expected ${order.currency} ${(order.totalCents / 100).toFixed(2)}, received ${verification.currency || 'missing'} ${(verification.amountCents / 100).toFixed(2)}.`,
         });
         db.updateOrderStatus(
           order.reference,
           'FULFILMENT_ON_HOLD',
-          `Payment amount mismatch! Expected R ${(order.totalCents / 100).toFixed(2)}, received R ${(verification.amountCents / 100).toFixed(2)}. Transaction ${verification.providerTransactionId}`,
+          `Payment amount/currency mismatch! Expected ${order.currency} ${(order.totalCents / 100).toFixed(2)}, received ${verification.currency || 'missing'} ${(verification.amountCents / 100).toFixed(2)}. Transaction ${verification.providerTransactionId}`,
           `${providerId.toUpperCase()} Webhook`
         );
-        return res.status(400).json({ success: false, error: 'Payment amount mismatch' });
+        return res.status(400).json({ success: false, error: 'Payment amount or currency mismatch' });
       }
 
       // Transition order to PAID and convert inventory reservations to permanent sales
