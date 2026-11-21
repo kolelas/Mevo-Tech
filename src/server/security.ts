@@ -114,9 +114,14 @@ export function verifyPaystackSignature(
   secretKey?: string
 ): boolean {
   if (!signatureHeader) return false;
-  const secret = secretKey || process.env.PAYSTACK_SECRET_KEY || 'sk_test_mevo_tech_rsa_gateway_secret';
+  const secret = secretKey || process.env.PAYSTACK_SECRET_KEY;
+  if (!secret) return false;
   const computedHash = crypto.createHmac('sha512', secret).update(rawBody).digest('hex');
-  return computedHash === signatureHeader;
+  const received = signatureHeader.trim().toLowerCase();
+  if (!/^[a-f0-9]{128}$/.test(received)) return false;
+  const expectedBuffer = Buffer.from(computedHash, 'hex');
+  const receivedBuffer = Buffer.from(received, 'hex');
+  return expectedBuffer.length === receivedBuffer.length && crypto.timingSafeEqual(expectedBuffer, receivedBuffer);
 }
 
 /**
