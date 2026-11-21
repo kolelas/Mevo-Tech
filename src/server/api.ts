@@ -769,6 +769,9 @@ apiRouter.get('/orders/:reference', (req: Request, res: Response) => {
     if (!order) {
       return res.status(404).json({ success: false, error: 'Order not found' });
     }
+    if (!verifyCustomerOwnership(req, order.customerId, order.customerEmail)) {
+      return res.status(403).json({ success: false, error: 'Access denied. Authenticate as the order owner.' });
+    }
     res.json({ success: true, order });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
