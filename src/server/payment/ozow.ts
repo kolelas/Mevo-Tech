@@ -16,14 +16,14 @@ export class OzowProvider implements IPaymentProvider {
     apiKey?: string;
     isTest?: boolean;
   }) {
-    this.siteCode = config?.siteCode || process.env.OZOW_SITE_CODE || 'MEV-001';
-    this.privateKey = config?.privateKey || process.env.OZOW_PRIVATE_KEY || 'sandbox_private_key';
-    this.apiKey = config?.apiKey || process.env.OZOW_API_KEY || 'sandbox_api_key';
+    this.siteCode = config?.siteCode ?? process.env.OZOW_SITE_CODE ?? '';
+    this.privateKey = config?.privateKey ?? process.env.OZOW_PRIVATE_KEY ?? '';
+    this.apiKey = config?.apiKey ?? process.env.OZOW_API_KEY ?? '';
     this.isTest = config?.isTest ?? (process.env.OZOW_ENVIRONMENT !== 'production');
   }
 
   isConfigured(): boolean {
-    return Boolean(this.siteCode && this.privateKey);
+    return Boolean(this.siteCode && this.privateKey && this.apiKey && !/sample|placeholder|sandbox/i.test(`${this.siteCode} ${this.privateKey} ${this.apiKey}`));
   }
 
   generateHash(data: {
