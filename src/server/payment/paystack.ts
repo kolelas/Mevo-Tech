@@ -144,15 +144,18 @@ export class PaystackProvider implements IPaymentProvider {
       ? nestedData as Record<string, unknown>
       : data;
 
+    const eventName = typeof data.event === 'string' ? data.event : '';
     const orderReference = typeof eventData.reference === 'string' ? eventData.reference : '';
     const providerTransactionId = String(eventData.id || '');
     const statusText = String(eventData.status || '').toLowerCase();
-    const amountCents = Number(eventData.amount || 0);
+    const rawAmount = Number(eventData.amount);
+    const amountCents = Number.isSafeInteger(rawAmount) && rawAmount > 0 ? rawAmount : 0;
 
+    // Only charge events may affect an order. Other signed Paystack event
+    // families (for example transfers or disputes) must not mark checkout paid.
     let status: 'SUCCESSFUL' | 'FAILED' | 'PENDING' | 'CANCELLED' = 'PENDING';
-    if (statusText === 'success') status = 'SUCCESSFUL';
-    else if (statusText === 'failed') status = 'FAILED';
-    else if (statusText === 'abandoned') status = 'CANCELLED';
+    if (eventName === 'charge.success' && statusText === 'success') status = 'SUCCESSFUL';
+    else if (eventName === 'charge.failed' && statusText === 'failed') status = 'FAILED';
 
     return {
       isValid: signatureVerified,
