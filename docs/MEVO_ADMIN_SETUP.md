@@ -82,3 +82,10 @@ Migration `006_admin_operations.sql` adds shipment metadata, support-case record
 - `GET /api/admin/audit/events` — requires the restricted `audit.read` permission (owner/admin only); bounded pagination and optional exact action filter.
 
 All routes are PostgreSQL-only. They do not read or mutate the legacy Maps store. They are not yet connected to the existing customer contact form or production order database.
+
+
+## Customer directory and payment ledger
+
+- `GET /api/admin/customers` — requires `customers.read`; bounded pagination, optional email/name search and status filter.
+- `GET /api/admin/customers/:customerId` — requires `customers.read`; narrow customer identity/status projection.
+- `GET /api/admin/payments/attempts` — requires `payments.read` (owner/admin only); bounded payment-attempt history and optional status filter. This is read-only and does not alter payment/order state.
