@@ -69,7 +69,7 @@ async function startServer() {
           <script>
             try {
               if (window.opener) {
-                window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS', provider: 'social' }, '*');
+                window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS', provider: 'social' }, window.location.origin);
                 setTimeout(function() { window.close(); }, 500);
               } else {
                 window.location.href = '/';
