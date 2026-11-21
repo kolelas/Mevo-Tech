@@ -46,3 +46,9 @@ Scope: backend, customer account workspace, and security. The storefront is expl
 ## Guardrails
 - Do not merge or deploy to production until test and staging verification is performed and explicitly approved.
 - Preserve the existing storefront untouched.
+
+
+## Payment adapter fail-closed remediation (latest)
+- Paystack webhook validation now fails closed if the secret is not configured; previously the unconfigured branch accepted the payload as valid.
+- Ozow and crypto webhook adapters now report invalid/unverified webhook authentication, preventing the API handler from accepting their payloads as verified payment notifications. These providers require real provider verification/reconciliation before being enabled for live checkout.
+- These code changes are not a substitute for provider-specific integration tests, raw-body handling, official verification, or reconciliation. No payment configuration or production environment was changed.
