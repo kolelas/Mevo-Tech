@@ -98,14 +98,14 @@ export class OzowProvider implements IPaymentProvider {
     }
 
     return {
-      isValid: true,
+      isValid: false,
       provider: 'ozow',
       orderReference,
       providerTransactionId: ozowTransactionId,
       status,
       amountCents,
       currency: 'ZAR',
-      signatureVerified: true,
+      signatureVerified: false,
       rawPayload: data,
     };
   }
